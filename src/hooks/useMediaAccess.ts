@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 
 interface MediaState {
   isScreenSharing: boolean;
@@ -9,6 +9,10 @@ interface MediaState {
   cameraStream: MediaStream | null;
   microphoneStream: MediaStream | null;
   audioLevel: number;
+  microphoneVolume: number;
+  screenAudioVolume: number;
+  availableMicrophones: MediaDeviceInfo[];
+  selectedMicrophone: string;
 }
 
 export const useMediaAccess = () => {
@@ -21,6 +25,10 @@ export const useMediaAccess = () => {
     cameraStream: null,
     microphoneStream: null,
     audioLevel: 0,
+    microphoneVolume: 75,
+    screenAudioVolume: 50,
+    availableMicrophones: [],
+    selectedMicrophone: 'default',
   });
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -28,6 +36,33 @@ export const useMediaAccess = () => {
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
+  const micGainNodeRef = useRef<GainNode | null>(null);
+  const screenGainNodeRef = useRef<GainNode | null>(null);
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    const savedMicVolume = localStorage.getItem('kawaii-mic-volume');
+    const savedScreenVolume = localStorage.getItem('kawaii-screen-volume');
+    const savedMicrophone = localStorage.getItem('kawaii-selected-microphone');
+
+    if (savedMicVolume || savedScreenVolume || savedMicrophone) {
+      setMediaState(prev => ({
+        ...prev,
+        microphoneVolume: savedMicVolume ? parseInt(savedMicVolume) : 75,
+        screenAudioVolume: savedScreenVolume ? parseInt(savedScreenVolume) : 50,
+        selectedMicrophone: savedMicrophone || 'default',
+      }));
+    }
+
+    // Get available microphones
+    navigator.mediaDevices.enumerateDevices().then(devices => {
+      const microphones = devices.filter(device => device.kind === 'audioinput');
+      setMediaState(prev => ({
+        ...prev,
+        availableMicrophones: microphones,
+      }));
+    });
+  }, []);
 
   const downloadFile = useCallback((blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -39,12 +74,6 @@ export const useMediaAccess = () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  }, []);
-
-  const convertWebMToMp4 = useCallback(async (webmBlob: Blob): Promise<Blob> => {
-    // For now, we'll keep it as WebM since true MP4 conversion requires FFmpeg
-    // But we'll change the filename to .mp4 for user convenience
-    return webmBlob;
   }, []);
 
   const takeScreenshot = useCallback(() => {
@@ -75,8 +104,34 @@ export const useMediaAccess = () => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: { mediaSource: 'screen' },
-        audio: true,
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
       });
+      
+      // Set up audio context for screen audio volume control
+      if (stream.getAudioTracks().length > 0) {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const source = audioContext.createMediaStreamSource(stream);
+        const gainNode = audioContext.createGain();
+        const destination = audioContext.createMediaStreamDestination();
+        
+        source.connect(gainNode);
+        gainNode.connect(destination);
+        
+        // Apply saved volume setting
+        gainNode.gain.value = mediaState.screenAudioVolume / 100;
+        screenGainNodeRef.current = gainNode;
+        
+        // Replace audio track with volume-controlled one
+        const originalAudioTrack = stream.getAudioTracks()[0];
+        stream.removeTrack(originalAudioTrack);
+        destination.stream.getAudioTracks().forEach(track => {
+          stream.addTrack(track);
+        });
+      }
       
       setMediaState(prev => ({
         ...prev,
@@ -89,7 +144,7 @@ export const useMediaAccess = () => {
       console.error('Error starting screen capture:', error);
       throw error;
     }
-  }, []);
+  }, [mediaState.screenAudioVolume]);
 
   const stopScreenCapture = useCallback(() => {
     if (mediaState.screenStream) {
@@ -99,6 +154,10 @@ export const useMediaAccess = () => {
         isScreenSharing: false,
         screenStream: null,
       }));
+    }
+    if (screenGainNodeRef.current && screenGainNodeRef.current.context) {
+      screenGainNodeRef.current.context.close();
+      screenGainNodeRef.current = null;
     }
   }, [mediaState.screenStream]);
 
@@ -135,25 +194,44 @@ export const useMediaAccess = () => {
 
   const startMicrophone = useCallback(async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const constraints = {
         audio: {
+          deviceId: mediaState.selectedMicrophone !== 'default' ? { exact: mediaState.selectedMicrophone } : undefined,
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         },
         video: false,
-      });
+      };
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
       
-      // Set up audio visualization
+      // Set up audio visualization and volume control
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const analyser = audioContext.createAnalyser();
       const source = audioContext.createMediaStreamSource(stream);
+      const gainNode = audioContext.createGain();
+      const destination = audioContext.createMediaStreamDestination();
       
-      source.connect(analyser);
+      source.connect(gainNode);
+      gainNode.connect(analyser);
+      gainNode.connect(destination);
+      
       analyser.fftSize = 256;
+      
+      // Apply saved volume setting
+      gainNode.gain.value = mediaState.microphoneVolume / 100;
       
       audioContextRef.current = audioContext;
       analyserRef.current = analyser;
+      micGainNodeRef.current = gainNode;
+      
+      // Replace original stream with volume-controlled stream
+      const originalTrack = stream.getAudioTracks()[0];
+      stream.removeTrack(originalTrack);
+      destination.stream.getAudioTracks().forEach(track => {
+        stream.addTrack(track);
+      });
       
       const updateAudioLevel = () => {
         if (analyserRef.current) {
@@ -185,7 +263,7 @@ export const useMediaAccess = () => {
       console.error('Error starting microphone:', error);
       throw error;
     }
-  }, []);
+  }, [mediaState.selectedMicrophone, mediaState.microphoneVolume]);
 
   const stopMicrophone = useCallback(() => {
     if (mediaState.microphoneStream) {
@@ -198,6 +276,10 @@ export const useMediaAccess = () => {
       cancelAnimationFrame(animationFrameRef.current);
     }
     
+    audioContextRef.current = null;
+    analyserRef.current = null;
+    micGainNodeRef.current = null;
+    
     setMediaState(prev => ({
       ...prev,
       isMicOn: false,
@@ -205,6 +287,29 @@ export const useMediaAccess = () => {
       audioLevel: 0,
     }));
   }, [mediaState.microphoneStream]);
+
+  const setMicrophoneVolume = useCallback((volume: number) => {
+    setMediaState(prev => ({ ...prev, microphoneVolume: volume }));
+    localStorage.setItem('kawaii-mic-volume', volume.toString());
+    
+    if (micGainNodeRef.current) {
+      micGainNodeRef.current.gain.value = volume / 100;
+    }
+  }, []);
+
+  const setScreenAudioVolume = useCallback((volume: number) => {
+    setMediaState(prev => ({ ...prev, screenAudioVolume: volume }));
+    localStorage.setItem('kawaii-screen-volume', volume.toString());
+    
+    if (screenGainNodeRef.current) {
+      screenGainNodeRef.current.gain.value = volume / 100;
+    }
+  }, []);
+
+  const setSelectedMicrophone = useCallback((deviceId: string) => {
+    setMediaState(prev => ({ ...prev, selectedMicrophone: deviceId }));
+    localStorage.setItem('kawaii-selected-microphone', deviceId);
+  }, []);
 
   const startRecording = useCallback(() => {
     const combinedStream = new MediaStream();
@@ -214,7 +319,7 @@ export const useMediaAccess = () => {
       mediaState.screenStream.getVideoTracks().forEach(track => {
         combinedStream.addTrack(track);
       });
-      // Add system audio from screen capture
+      // Add system audio from screen capture (with volume control applied)
       mediaState.screenStream.getAudioTracks().forEach(track => {
         combinedStream.addTrack(track);
       });
@@ -226,7 +331,7 @@ export const useMediaAccess = () => {
       });
     }
     
-    // Add microphone audio
+    // Add microphone audio (with volume control applied)
     if (mediaState.microphoneStream) {
       mediaState.microphoneStream.getAudioTracks().forEach(track => {
         combinedStream.addTrack(track);
@@ -261,8 +366,7 @@ export const useMediaAccess = () => {
         const webmBlob = new Blob(recordedChunksRef.current, { type: mimeType });
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         
-        // For now, we'll save as .mp4 extension even though it's WebM format
-        // This makes it more compatible with media players
+        // Save as .mp4 extension for better compatibility
         downloadFile(webmBlob, `kawaii-recording-${timestamp}.mp4`);
         recordedChunksRef.current = [];
       };
@@ -302,5 +406,8 @@ export const useMediaAccess = () => {
     startRecording,
     stopRecording,
     takeScreenshot,
+    setMicrophoneVolume,
+    setScreenAudioVolume,
+    setSelectedMicrophone,
   };
 };

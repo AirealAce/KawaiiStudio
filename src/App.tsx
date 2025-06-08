@@ -20,6 +20,9 @@ function App() {
     startRecording,
     stopRecording,
     takeScreenshot,
+    setMicrophoneVolume,
+    setScreenAudioVolume,
+    setSelectedMicrophone,
   } = useMediaAccess();
 
   const { playSuccess, playError, playNotification } = useSound();
@@ -177,6 +180,10 @@ function App() {
             onRecord={handleRecord}
             onScreenshot={handleScreenshot}
             onFilters={handleFilters}
+            mediaState={mediaState}
+            setMicrophoneVolume={setMicrophoneVolume}
+            setScreenAudioVolume={setScreenAudioVolume}
+            setSelectedMicrophone={setSelectedMicrophone}
           />
         </div>
       </div>
