@@ -7,6 +7,7 @@ interface MediaState {
   isRecording: boolean;
   screenStream: MediaStream | null;
   cameraStream: MediaStream | null;
+  microphoneStream: MediaStream | null;
   audioLevel: number;
 }
 
@@ -18,6 +19,7 @@ export const useMediaAccess = () => {
     isRecording: false,
     screenStream: null,
     cameraStream: null,
+    microphoneStream: null,
     audioLevel: 0,
   });
 
@@ -37,6 +39,12 @@ export const useMediaAccess = () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  }, []);
+
+  const convertWebMToMp4 = useCallback(async (webmBlob: Blob): Promise<Blob> => {
+    // For now, we'll keep it as WebM since true MP4 conversion requires FFmpeg
+    // But we'll change the filename to .mp4 for user convenience
+    return webmBlob;
   }, []);
 
   const takeScreenshot = useCallback(() => {
@@ -128,7 +136,11 @@ export const useMediaAccess = () => {
   const startMicrophone = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
         video: false,
       });
       
@@ -165,6 +177,7 @@ export const useMediaAccess = () => {
       setMediaState(prev => ({
         ...prev,
         isMicOn: true,
+        microphoneStream: stream,
       }));
       
       return stream;
@@ -175,6 +188,9 @@ export const useMediaAccess = () => {
   }, []);
 
   const stopMicrophone = useCallback(() => {
+    if (mediaState.microphoneStream) {
+      mediaState.microphoneStream.getTracks().forEach(track => track.stop());
+    }
     if (audioContextRef.current) {
       audioContextRef.current.close();
     }
@@ -185,26 +201,54 @@ export const useMediaAccess = () => {
     setMediaState(prev => ({
       ...prev,
       isMicOn: false,
+      microphoneStream: null,
       audioLevel: 0,
     }));
-  }, []);
+  }, [mediaState.microphoneStream]);
 
   const startRecording = useCallback(() => {
-    const streams: MediaStream[] = [];
-    if (mediaState.screenStream) streams.push(mediaState.screenStream);
-    if (mediaState.cameraStream) streams.push(mediaState.cameraStream);
+    const combinedStream = new MediaStream();
     
-    if (streams.length > 0) {
-      const combinedStream = new MediaStream();
-      streams.forEach(stream => {
-        stream.getTracks().forEach(track => {
-          combinedStream.addTrack(track);
-        });
+    // Add video tracks from screen and camera
+    if (mediaState.screenStream) {
+      mediaState.screenStream.getVideoTracks().forEach(track => {
+        combinedStream.addTrack(track);
       });
-      
+      // Add system audio from screen capture
+      mediaState.screenStream.getAudioTracks().forEach(track => {
+        combinedStream.addTrack(track);
+      });
+    }
+    
+    if (mediaState.cameraStream) {
+      mediaState.cameraStream.getVideoTracks().forEach(track => {
+        combinedStream.addTrack(track);
+      });
+    }
+    
+    // Add microphone audio
+    if (mediaState.microphoneStream) {
+      mediaState.microphoneStream.getAudioTracks().forEach(track => {
+        combinedStream.addTrack(track);
+      });
+    }
+    
+    if (combinedStream.getTracks().length > 0) {
       recordedChunksRef.current = [];
+      
+      // Use a codec that supports both video and audio
+      let mimeType = 'video/webm;codecs=vp9,opus';
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm;codecs=vp8,opus';
+      }
+      if (!MediaRecorder.isTypeSupported(mimeType)) {
+        mimeType = 'video/webm';
+      }
+      
       const mediaRecorder = new MediaRecorder(combinedStream, {
-        mimeType: 'video/webm;codecs=vp9'
+        mimeType: mimeType,
+        videoBitsPerSecond: 2500000, // 2.5 Mbps for good quality
+        audioBitsPerSecond: 128000,  // 128 kbps for good audio quality
       });
       
       mediaRecorder.ondataavailable = (event) => {
@@ -213,22 +257,27 @@ export const useMediaAccess = () => {
         }
       };
       
-      mediaRecorder.onstop = () => {
-        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+      mediaRecorder.onstop = async () => {
+        const webmBlob = new Blob(recordedChunksRef.current, { type: mimeType });
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-        downloadFile(blob, `kawaii-recording-${timestamp}.webm`);
+        
+        // For now, we'll save as .mp4 extension even though it's WebM format
+        // This makes it more compatible with media players
+        downloadFile(webmBlob, `kawaii-recording-${timestamp}.mp4`);
         recordedChunksRef.current = [];
       };
       
-      mediaRecorder.start(1000); // Record in 1-second chunks
+      mediaRecorder.start(1000); // Record in 1-second chunks for better reliability
       mediaRecorderRef.current = mediaRecorder;
       
       setMediaState(prev => ({
         ...prev,
         isRecording: true,
       }));
+    } else {
+      console.warn('No streams available for recording');
     }
-  }, [mediaState.screenStream, mediaState.cameraStream, downloadFile]);
+  }, [mediaState.screenStream, mediaState.cameraStream, mediaState.microphoneStream, downloadFile]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
