@@ -326,43 +326,66 @@ export const useMediaAccess = () => {
   }, []);
 
   const startRecording = useCallback(() => {
+    console.log('🎬 Starting recording...');
+    console.log('Screen sharing:', mediaState.isScreenSharing);
+    console.log('Microphone on:', mediaState.isMicOn);
+    console.log('Camera on:', mediaState.isCameraOn);
+    
     const combinedStream = new MediaStream();
     
-    // Add video tracks from screen
+    // Add video tracks from screen (primary video source)
     if (mediaState.screenStream) {
       mediaState.screenStream.getVideoTracks().forEach(track => {
+        console.log('📺 Adding screen video track:', track.label);
         combinedStream.addTrack(track);
       });
-    }
-    
-    // Add video tracks from camera
-    if (mediaState.cameraStream) {
-      mediaState.cameraStream.getVideoTracks().forEach(track => {
-        combinedStream.addTrack(track);
-      });
-    }
-    
-    // Add screen audio tracks
-    if (mediaState.screenStream) {
+      
+      // Add screen audio tracks
       mediaState.screenStream.getAudioTracks().forEach(track => {
+        console.log('🔊 Adding screen audio track:', track.label);
         combinedStream.addTrack(track);
       });
     }
     
-    // CRITICAL: Add the ORIGINAL microphone stream for recording (not the processed preview stream)
-    if (originalMicStreamRef.current) {
+    // CRITICAL: Add the ORIGINAL microphone stream for recording
+    if (originalMicStreamRef.current && mediaState.isMicOn) {
       originalMicStreamRef.current.getAudioTracks().forEach(track => {
-        console.log('Adding microphone track to recording:', track);
+        console.log('🎤 Adding microphone track to recording:', track.label, 'enabled:', track.enabled, 'readyState:', track.readyState);
+        
+        // Ensure the track is enabled and active
+        track.enabled = true;
+        
+        combinedStream.addTrack(track);
+      });
+    } else {
+      console.warn('⚠️ No microphone stream available for recording!');
+      if (!mediaState.isMicOn) {
+        console.warn('⚠️ Microphone is not turned on!');
+      }
+      if (!originalMicStreamRef.current) {
+        console.warn('⚠️ Original microphone stream reference is null!');
+      }
+    }
+    
+    // Add camera video if no screen sharing (fallback)
+    if (!mediaState.screenStream && mediaState.cameraStream) {
+      mediaState.cameraStream.getVideoTracks().forEach(track => {
+        console.log('📷 Adding camera video track:', track.label);
         combinedStream.addTrack(track);
       });
     }
     
-    console.log('Combined stream tracks:', combinedStream.getTracks().map(t => ({ kind: t.kind, label: t.label })));
+    console.log('🎵 Combined stream tracks:', combinedStream.getTracks().map(t => ({ 
+      kind: t.kind, 
+      label: t.label, 
+      enabled: t.enabled, 
+      readyState: t.readyState 
+    })));
     
     if (combinedStream.getTracks().length > 0) {
       recordedChunksRef.current = [];
       
-      // Try different codec combinations for better compatibility
+      // Use the most compatible codec
       const codecOptions = [
         'video/mp4;codecs=h264,aac',
         'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
@@ -376,11 +399,10 @@ export const useMediaAccess = () => {
       for (const codec of codecOptions) {
         if (MediaRecorder.isTypeSupported(codec)) {
           mimeType = codec;
+          console.log('✅ Using codec:', mimeType);
           break;
         }
       }
-      
-      console.log('Using codec:', mimeType);
       
       const mediaRecorder = new MediaRecorder(combinedStream, {
         mimeType: mimeType,
@@ -390,12 +412,16 @@ export const useMediaAccess = () => {
       
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
+          console.log('📦 Recording chunk received:', event.data.size, 'bytes');
           recordedChunksRef.current.push(event.data);
         }
       };
       
       mediaRecorder.onstop = () => {
+        console.log('🛑 Recording stopped, processing...');
         const blob = new Blob(recordedChunksRef.current, { type: mimeType });
+        console.log('💾 Final recording blob size:', blob.size, 'bytes');
+        
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         
         // Use appropriate file extension
@@ -404,19 +430,26 @@ export const useMediaAccess = () => {
         recordedChunksRef.current = [];
       };
       
+      mediaRecorder.onerror = (event) => {
+        console.error('❌ MediaRecorder error:', event);
+      };
+      
       mediaRecorder.start(1000); // Record in 1-second chunks
       mediaRecorderRef.current = mediaRecorder;
+      
+      console.log('🔴 Recording started successfully!');
       
       setMediaState(prev => ({
         ...prev,
         isRecording: true,
       }));
     } else {
-      console.warn('No streams available for recording');
+      console.warn('⚠️ No streams available for recording');
     }
-  }, [mediaState.screenStream, mediaState.cameraStream, downloadFile]);
+  }, [mediaState.screenStream, mediaState.cameraStream, mediaState.isMicOn, downloadFile]);
 
   const stopRecording = useCallback(() => {
+    console.log('⏹️ Stopping recording...');
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current = null;
@@ -425,6 +458,8 @@ export const useMediaAccess = () => {
         ...prev,
         isRecording: false,
       }));
+      
+      console.log('✅ Recording stopped successfully!');
     }
   }, []);
 
