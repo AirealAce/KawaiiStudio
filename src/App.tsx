@@ -4,10 +4,9 @@ import { AudioVisualizer } from './components/AudioVisualizer';
 import { StreamControls } from './components/StreamControls';
 import { StatusBar } from './components/StatusBar';
 import { KawaiiButton } from './components/KawaiiButton';
-import { APISetupModal } from './components/APISetupModal';
 import { useMediaAccess } from './hooks/useMediaAccess';
 import { useSound } from './hooks/useSound';
-import { Sparkles, Heart, Star, AlertCircle, X, Settings } from 'lucide-react';
+import { Sparkles, Heart, Star, AlertCircle, X } from 'lucide-react';
 
 function App() {
   const {
@@ -24,7 +23,6 @@ function App() {
     setMicrophoneVolume,
     setScreenAudioVolume,
     setSelectedMicrophone,
-    setGenderFilter,
   } = useMediaAccess();
 
   const { playSuccess, playError, playNotification } = useSound();
@@ -32,7 +30,6 @@ function App() {
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [viewerCount] = useState(Math.floor(Math.random() * 1000) + 50);
   const [showFiltersModal, setShowFiltersModal] = useState(false);
-  const [showAPISetupModal, setShowAPISetupModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -156,17 +153,6 @@ function App() {
     playNotification();
   };
 
-  const handleGenderFilter = async (filter: 'none' | 'feminine' | 'masculine', useAI: boolean = true) => {
-    try {
-      await setGenderFilter(filter, useAI);
-      playSuccess();
-    } catch (error) {
-      console.error('Gender filter error:', error);
-      playError();
-      showError('💔 Failed to apply gender filter. Please try again! 🌟');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-kawaii-pink-200 via-kawaii-purple-200 to-kawaii-blue-200 font-kawaii p-4">
       {/* Error Toast */}
@@ -202,7 +188,7 @@ function App() {
         </h1>
         <p className="text-xl text-kawaii-purple-700 font-semibold flex items-center justify-center gap-2">
           <Heart size={24} className="text-kawaii-pink-500 animate-pulse" />
-          The cutest streaming app with AI gender transformation!
+          The cutest streaming app for adorable streamers!
           <Heart size={24} className="text-kawaii-pink-500 animate-pulse" />
         </p>
         <div className="flex items-center justify-center gap-4 mt-4">
@@ -251,8 +237,6 @@ function App() {
             setMicrophoneVolume={setMicrophoneVolume}
             setScreenAudioVolume={setScreenAudioVolume}
             setSelectedMicrophone={setSelectedMicrophone}
-            genderFilter={mediaState.genderFilter}
-            setGenderFilter={handleGenderFilter}
           />
         </div>
       </div>
@@ -261,12 +245,11 @@ function App() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Camera Preview */}
         <VideoPreview
-          stream={mediaState.transformedCameraStream || mediaState.cameraStream}
+          stream={mediaState.cameraStream}
           title="Camera"
           emoji="📷"
           isActive={mediaState.isCameraOn}
           className="h-64"
-          genderFilter={mediaState.genderFilter}
         />
 
         {/* Audio Visualizer */}
@@ -286,12 +269,11 @@ function App() {
           </h3>
           <div className="flex gap-4 flex-wrap justify-center">
             <KawaiiButton
-              onClick={() => setShowAPISetupModal(true)}
-              emoji="🤖"
+              onClick={() => playNotification()}
+              emoji="🎉"
               size="sm"
-              variant="primary"
             >
-              AI Setup
+              Test Sounds
             </KawaiiButton>
             <KawaiiButton
               onClick={handleScreenshot}
@@ -331,87 +313,6 @@ function App() {
               <KawaiiButton emoji="💖" size="sm" variant="secondary">Hearts</KawaiiButton>
               <KawaiiButton emoji="🦄" size="sm" variant="success">Unicorn</KawaiiButton>
             </div>
-
-            {/* AI Gender Transformation Section */}
-            {mediaState.isCameraOn && (
-              <div className="mb-6">
-                <h4 className="font-kawaii font-bold text-lg text-kawaii-purple-800 mb-4 text-center flex items-center justify-center gap-2">
-                  <span className="text-2xl">🤖</span>
-                  AI Gender Transformation
-                  <span className="text-2xl">⚧️</span>
-                </h4>
-                
-                <div className="grid grid-cols-1 gap-3">
-                  <KawaiiButton
-                    onClick={() => handleGenderFilter('none')}
-                    variant={mediaState.genderFilter === 'none' ? 'primary' : 'secondary'}
-                    emoji="🚫"
-                    size="sm"
-                    className="w-full"
-                  >
-                    No Filter (Natural)
-                  </KawaiiButton>
-                  
-                  <KawaiiButton
-                    onClick={() => handleGenderFilter('feminine', true)}
-                    variant={mediaState.genderFilter === 'feminine' ? 'primary' : 'secondary'}
-                    emoji="👩"
-                    size="sm"
-                    className="w-full bg-gradient-to-r from-pink-400 to-purple-500 hover:from-pink-500 hover:to-purple-600"
-                    disabled={mediaState.isFilterProcessing}
-                  >
-                    {mediaState.isFilterProcessing && mediaState.genderFilter === 'feminine' ? 'Processing...' : '🎀 Male to Female (AI)'}
-                  </KawaiiButton>
-                  
-                  <KawaiiButton
-                    onClick={() => handleGenderFilter('masculine', true)}
-                    variant={mediaState.genderFilter === 'masculine' ? 'primary' : 'secondary'}
-                    emoji="👨"
-                    size="sm"
-                    className="w-full bg-gradient-to-r from-blue-400 to-indigo-500 hover:from-blue-500 hover:to-indigo-600"
-                    disabled={mediaState.isFilterProcessing}
-                  >
-                    {mediaState.isFilterProcessing && mediaState.genderFilter === 'masculine' ? 'Processing...' : '💪 Female to Male (AI)'}
-                  </KawaiiButton>
-                  
-                  <div className="flex gap-2">
-                    <KawaiiButton
-                      onClick={() => handleGenderFilter('feminine', false)}
-                      variant="secondary"
-                      emoji="🎨"
-                      size="sm"
-                      className="flex-1"
-                    >
-                      CSS Fem
-                    </KawaiiButton>
-                    <KawaiiButton
-                      onClick={() => handleGenderFilter('masculine', false)}
-                      variant="secondary"
-                      emoji="🎨"
-                      size="sm"
-                      className="flex-1"
-                    >
-                      CSS Masc
-                    </KawaiiButton>
-                  </div>
-                </div>
-                
-                <div className="bg-gradient-to-r from-pink-50 to-blue-50 p-3 rounded-xl border-2 border-gradient-to-r from-pink-200 to-blue-200 mt-4">
-                  <p className="font-kawaii text-kawaii-purple-700 text-xs text-center">
-                    🤖 <strong>AI Mode:</strong> Real hair, makeup, body changes! 
-                    🎨 <strong>CSS Mode:</strong> Enhanced visual filters only.
-                  </p>
-                  <div className="text-center mt-2">
-                    <button
-                      onClick={() => setShowAPISetupModal(true)}
-                      className="text-kawaii-blue-500 underline text-xs font-kawaii hover:text-kawaii-blue-700"
-                    >
-                      ⚙️ Configure AI APIs
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
             
             <div className="text-center">
               <KawaiiButton
@@ -426,13 +327,6 @@ function App() {
           </div>
         </div>
       )}
-
-      {/* API Setup Modal */}
-      <APISetupModal
-        isOpen={showAPISetupModal}
-        onClose={() => setShowAPISetupModal(false)}
-        apiStatus={mediaState.apiStatus}
-      />
 
       {/* Footer */}
       <div className="mt-8 text-center">

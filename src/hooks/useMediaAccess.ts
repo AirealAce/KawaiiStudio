@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { useGenderFilter } from './useGenderFilter';
 
 interface MediaState {
   isScreenSharing: boolean;
@@ -14,11 +13,6 @@ interface MediaState {
   screenAudioVolume: number;
   availableMicrophones: MediaDeviceInfo[];
   selectedMicrophone: string;
-  // Gender filter state
-  genderFilter: 'none' | 'feminine' | 'masculine';
-  transformedCameraStream: MediaStream | null;
-  isFilterProcessing: boolean;
-  apiStatus: { available: boolean; provider: string; error?: string } | null;
 }
 
 export const useMediaAccess = () => {
@@ -35,10 +29,6 @@ export const useMediaAccess = () => {
     screenAudioVolume: 80,
     availableMicrophones: [],
     selectedMicrophone: 'default',
-    genderFilter: 'none',
-    transformedCameraStream: null,
-    isFilterProcessing: false,
-    apiStatus: null,
   });
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -57,9 +47,6 @@ export const useMediaAccess = () => {
   const recordingMicStreamRef = useRef<MediaStream | null>(null);
   const recordingAudioContextRef = useRef<AudioContext | null>(null);
   const recordingMicGainNodeRef = useRef<GainNode | null>(null);
-
-  // Gender filter hook
-  const { filterState, startGenderFilter, stopGenderFilter } = useGenderFilter();
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -85,16 +72,6 @@ export const useMediaAccess = () => {
       }));
     });
   }, []);
-
-  // Update media state when filter state changes
-  useEffect(() => {
-    setMediaState(prev => ({
-      ...prev,
-      transformedCameraStream: filterState.transformedStream,
-      isFilterProcessing: filterState.isProcessing,
-      apiStatus: filterState.apiStatus,
-    }));
-  }, [filterState]);
 
   const downloadFile = useCallback((blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob);
@@ -254,16 +231,7 @@ export const useMediaAccess = () => {
         cameraStream: null,
       }));
     }
-    
-    // Stop gender filter when camera is stopped
-    if (mediaState.genderFilter !== 'none') {
-      stopGenderFilter();
-      setMediaState(prev => ({
-        ...prev,
-        genderFilter: 'none',
-      }));
-    }
-  }, [mediaState.cameraStream, mediaState.genderFilter, stopGenderFilter]);
+  }, [mediaState.cameraStream]);
 
   const startMicrophone = useCallback(async () => {
     try {
@@ -438,23 +406,6 @@ export const useMediaAccess = () => {
     localStorage.setItem('kawaii-selected-microphone', deviceId);
   }, []);
 
-  // New gender filter functions
-  const setGenderFilter = useCallback(async (filter: 'none' | 'feminine' | 'masculine', useAI: boolean = true) => {
-    console.log(`🎭 Setting gender filter to: ${filter} (AI: ${useAI})`);
-    
-    // Stop current filter if any
-    if (mediaState.genderFilter !== 'none') {
-      stopGenderFilter();
-    }
-    
-    setMediaState(prev => ({ ...prev, genderFilter: filter }));
-    
-    // Apply new filter if not 'none' and camera is on
-    if (filter !== 'none' && mediaState.cameraStream) {
-      await startGenderFilter(mediaState.cameraStream, filter, useAI);
-    }
-  }, [mediaState.genderFilter, mediaState.cameraStream, stopGenderFilter, startGenderFilter]);
-
   const createMixedAudioStream = useCallback(() => {
     console.log('🎵 Creating mixed audio stream for recording...');
     
@@ -512,8 +463,6 @@ export const useMediaAccess = () => {
       hasOriginalMicStream: !!originalMicStreamRef.current,
       hasRecordingMicStream: !!recordingMicStreamRef.current,
       hasScreenStream: !!mediaState.screenStream,
-      genderFilter: mediaState.genderFilter,
-      hasTransformedStream: !!mediaState.transformedCameraStream,
     });
     
     const combinedStream = new MediaStream();
@@ -528,9 +477,9 @@ export const useMediaAccess = () => {
       });
     }
     
-    // Add camera video (use transformed stream if filter is active)
+    // Add camera video if no screen sharing (fallback)
     if (!mediaState.screenStream && mediaState.isCameraOn) {
-      const cameraStreamToUse = mediaState.transformedCameraStream || mediaState.cameraStream;
+      const cameraStreamToUse = mediaState.cameraStream;
       if (cameraStreamToUse) {
         cameraStreamToUse.getVideoTracks().forEach(track => {
           console.log('📷 Adding camera video track:', track.label || 'Camera');
@@ -635,7 +584,7 @@ export const useMediaAccess = () => {
     } else {
       console.warn('⚠️ No streams available for recording');
     }
-  }, [mediaState.screenStream, mediaState.cameraStream, mediaState.transformedCameraStream, mediaState.isMicOn, mediaState.isCameraOn, downloadFile, createMixedAudioStream]);
+  }, [mediaState.screenStream, mediaState.cameraStream, mediaState.isMicOn, mediaState.isCameraOn, downloadFile, createMixedAudioStream]);
 
   const stopRecording = useCallback(() => {
     console.log('⏹️ Stopping recording...');
@@ -685,6 +634,5 @@ export const useMediaAccess = () => {
     setMicrophoneVolume,
     setScreenAudioVolume,
     setSelectedMicrophone,
-    setGenderFilter,
   };
 };

@@ -18,8 +18,6 @@ interface StreamControlsProps {
   setMicrophoneVolume?: (volume: number) => void;
   setScreenAudioVolume?: (volume: number) => void;
   setSelectedMicrophone?: (deviceId: string) => void;
-  genderFilter?: 'none' | 'feminine' | 'masculine';
-  setGenderFilter?: (filter: 'none' | 'feminine' | 'masculine', useAI?: boolean) => void;
 }
 
 export const StreamControls: React.FC<StreamControlsProps> = ({
@@ -37,8 +35,6 @@ export const StreamControls: React.FC<StreamControlsProps> = ({
   setMicrophoneVolume,
   setScreenAudioVolume,
   setSelectedMicrophone,
-  genderFilter = 'none',
-  setGenderFilter,
 }) => {
   const { playSuccess, playError } = useSound();
   const [showMicSettings, setShowMicSettings] = useState(false);
@@ -86,13 +82,6 @@ export const StreamControls: React.FC<StreamControlsProps> = ({
   const handleScreenSettings = () => {
     setShowScreenSettings(true);
     playSuccess();
-  };
-
-  const handleGenderFilterChange = (filter: 'none' | 'feminine' | 'masculine', useAI: boolean = true) => {
-    if (setGenderFilter) {
-      setGenderFilter(filter, useAI);
-      playSuccess();
-    }
   };
 
   return (
@@ -174,61 +163,6 @@ export const StreamControls: React.FC<StreamControlsProps> = ({
           </div>
         </KawaiiButton>
       </div>
-
-      {/* AI Gender Filter Quick Controls */}
-      {isCameraOn && (
-        <div className="mb-6 p-4 bg-gradient-to-r from-pink-50 to-blue-50 rounded-xl border-2 border-kawaii-pink-200">
-          <h3 className="font-kawaii font-bold text-sm text-kawaii-purple-800 mb-3 text-center flex items-center justify-center gap-2">
-            <span className="text-lg">🤖</span>
-            AI Gender Transform
-            <span className="text-lg">⚧️</span>
-          </h3>
-          
-          <div className="grid grid-cols-3 gap-2 mb-3">
-            <KawaiiButton
-              onClick={() => handleGenderFilterChange('none')}
-              variant={genderFilter === 'none' ? 'primary' : 'secondary'}
-              emoji="🚫"
-              size="sm"
-              className="text-xs"
-            >
-              None
-            </KawaiiButton>
-            
-            <KawaiiButton
-              onClick={() => handleGenderFilterChange('feminine', true)}
-              variant={genderFilter === 'feminine' ? 'primary' : 'secondary'}
-              emoji="👩"
-              size="sm"
-              className="text-xs bg-gradient-to-r from-pink-400 to-purple-500 hover:from-pink-500 hover:to-purple-600"
-              disabled={mediaState?.isFilterProcessing}
-            >
-              {mediaState?.isFilterProcessing && genderFilter === 'feminine' ? '...' : 'AI Fem'}
-            </KawaiiButton>
-            
-            <KawaiiButton
-              onClick={() => handleGenderFilterChange('masculine', true)}
-              variant={genderFilter === 'masculine' ? 'primary' : 'secondary'}
-              emoji="👨"
-              size="sm"
-              className="text-xs bg-gradient-to-r from-blue-400 to-indigo-500 hover:from-blue-500 hover:to-indigo-600"
-              disabled={mediaState?.isFilterProcessing}
-            >
-              {mediaState?.isFilterProcessing && genderFilter === 'masculine' ? '...' : 'AI Masc'}
-            </KawaiiButton>
-          </div>
-
-          <div className="text-center">
-            <p className="text-xs text-kawaii-purple-600 font-kawaii">
-              {mediaState?.apiStatus?.available ? (
-                <span className="text-green-600">✅ AI Ready ({mediaState.apiStatus.provider})</span>
-              ) : (
-                <span className="text-orange-600">⚠️ CSS Only (Setup AI for real transformation)</span>
-              )}
-            </p>
-          </div>
-        </div>
-      )}
       
       <div className="grid grid-cols-2 gap-4 mb-4">
         <KawaiiButton

@@ -8,7 +8,6 @@ interface VideoPreviewProps {
   emoji: string;
   isActive: boolean;
   className?: string;
-  genderFilter?: 'none' | 'feminine' | 'masculine';
 }
 
 export const VideoPreview: React.FC<VideoPreviewProps> = ({
@@ -17,7 +16,6 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
   emoji,
   isActive,
   className = '',
-  genderFilter = 'none',
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -37,27 +35,6 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
     }
   };
 
-  const getFilterIndicator = () => {
-    if (title !== 'Camera' || genderFilter === 'none') return null;
-    
-    const filterInfo = {
-      feminine: { emoji: '👩', label: 'Feminine', color: 'from-pink-400 to-purple-500' },
-      masculine: { emoji: '👨', label: 'Masculine', color: 'from-blue-400 to-indigo-500' }
-    };
-    
-    const info = filterInfo[genderFilter];
-    if (!info) return null;
-    
-    return (
-      <div className={`absolute top-16 left-4 z-10 bg-gradient-to-r ${info.color} text-white rounded-full px-3 py-1 text-xs font-kawaii font-semibold animate-pulse shadow-lg`}>
-        <span className="flex items-center gap-1">
-          <span>{info.emoji}</span>
-          {info.label} Filter Active
-        </span>
-      </div>
-    );
-  };
-
   return (
     <div 
       ref={containerRef}
@@ -71,8 +48,6 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
           {title}
         </span>
       </div>
-      
-      {getFilterIndicator()}
       
       <div className="absolute top-4 right-4 z-10 bg-kawaii-pink-500/80 backdrop-blur-sm rounded-full px-2 py-1 text-white text-xs font-kawaii font-semibold animate-pulse">
         Double-click for fullscreen! ✨
