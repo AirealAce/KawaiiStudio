@@ -39,7 +39,6 @@ export const useMediaAccess = () => {
   const micGainNodeRef = useRef<GainNode | null>(null);
   const screenGainNodeRef = useRef<GainNode | null>(null);
   const originalMicStreamRef = useRef<MediaStream | null>(null);
-  const originalScreenStreamRef = useRef<MediaStream | null>(null);
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -120,10 +119,7 @@ export const useMediaAccess = () => {
         },
       });
       
-      // Store original stream for recording
-      originalScreenStreamRef.current = stream.clone();
-      
-      // Set up audio context for screen audio volume control (for preview only)
+      // Set up audio context for screen audio volume control
       if (stream.getAudioTracks().length > 0) {
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
         const source = audioContext.createMediaStreamSource(stream);
@@ -133,11 +129,11 @@ export const useMediaAccess = () => {
         source.connect(gainNode);
         gainNode.connect(destination);
         
-        // Apply saved volume setting
-        gainNode.gain.value = mediaState.screenAudioVolume / 100;
+        // Apply saved volume setting with higher gain
+        gainNode.gain.value = (mediaState.screenAudioVolume / 100) * 2; // Double the gain for better volume
         screenGainNodeRef.current = gainNode;
         
-        // Replace audio track with volume-controlled one for preview
+        // Replace audio track with volume-controlled one
         const originalAudioTrack = stream.getAudioTracks()[0];
         stream.removeTrack(originalAudioTrack);
         destination.stream.getAudioTracks().forEach(track => {
@@ -166,10 +162,6 @@ export const useMediaAccess = () => {
         isScreenSharing: false,
         screenStream: null,
       }));
-    }
-    if (originalScreenStreamRef.current) {
-      originalScreenStreamRef.current.getTracks().forEach(track => track.stop());
-      originalScreenStreamRef.current = null;
     }
     if (screenGainNodeRef.current && screenGainNodeRef.current.context) {
       screenGainNodeRef.current.context.close();
@@ -224,7 +216,7 @@ export const useMediaAccess = () => {
 
       const originalStream = await navigator.mediaDevices.getUserMedia(constraints);
       
-      // Store the original, unprocessed stream for recording
+      // CRITICAL: Store the original, unprocessed stream for recording
       originalMicStreamRef.current = originalStream.clone();
       
       // Create a separate stream for preview/monitoring with volume control
@@ -323,7 +315,8 @@ export const useMediaAccess = () => {
     localStorage.setItem('kawaii-screen-volume', volume.toString());
     
     if (screenGainNodeRef.current) {
-      screenGainNodeRef.current.gain.value = volume / 100;
+      // Apply higher gain for better volume
+      screenGainNodeRef.current.gain.value = (volume / 100) * 2;
     }
   }, []);
 
@@ -332,151 +325,99 @@ export const useMediaAccess = () => {
     localStorage.setItem('kawaii-selected-microphone', deviceId);
   }, []);
 
-  const createCombinedStream = useCallback(() => {
+  const startRecording = useCallback(() => {
     const combinedStream = new MediaStream();
     
-    // Priority 1: Screen video (if available)
-    if (originalScreenStreamRef.current) {
-      const videoTracks = originalScreenStreamRef.current.getVideoTracks();
-      if (videoTracks.length > 0) {
-        console.log('Adding screen video track to recording');
-        combinedStream.addTrack(videoTracks[0]); // Only add the first video track
-      }
-    }
-    // Priority 2: Camera video (only if no screen video)
-    else if (mediaState.cameraStream) {
-      const videoTracks = mediaState.cameraStream.getVideoTracks();
-      if (videoTracks.length > 0) {
-        console.log('Adding camera video track to recording');
-        combinedStream.addTrack(videoTracks[0]); // Only add the first video track
-      }
-    }
-    
-    // Add screen audio (original, unprocessed)
-    if (originalScreenStreamRef.current) {
-      const audioTracks = originalScreenStreamRef.current.getAudioTracks();
-      audioTracks.forEach(track => {
-        console.log('Adding screen audio track to recording');
+    // Add video tracks from screen
+    if (mediaState.screenStream) {
+      mediaState.screenStream.getVideoTracks().forEach(track => {
         combinedStream.addTrack(track);
       });
     }
     
-    // Add microphone audio (original, unprocessed)
+    // Add video tracks from camera
+    if (mediaState.cameraStream) {
+      mediaState.cameraStream.getVideoTracks().forEach(track => {
+        combinedStream.addTrack(track);
+      });
+    }
+    
+    // Add screen audio tracks
+    if (mediaState.screenStream) {
+      mediaState.screenStream.getAudioTracks().forEach(track => {
+        combinedStream.addTrack(track);
+      });
+    }
+    
+    // CRITICAL: Add the ORIGINAL microphone stream for recording (not the processed preview stream)
     if (originalMicStreamRef.current) {
-      const audioTracks = originalMicStreamRef.current.getAudioTracks();
-      audioTracks.forEach(track => {
-        console.log('Adding microphone audio track to recording');
+      originalMicStreamRef.current.getAudioTracks().forEach(track => {
+        console.log('Adding microphone track to recording:', track);
         combinedStream.addTrack(track);
       });
     }
     
-    console.log('Combined stream tracks:', combinedStream.getTracks().map(t => ({ 
-      kind: t.kind, 
-      label: t.label,
-      id: t.id.slice(0, 8) + '...'
-    })));
+    console.log('Combined stream tracks:', combinedStream.getTracks().map(t => ({ kind: t.kind, label: t.label })));
     
-    return combinedStream;
-  }, [mediaState.cameraStream]);
-
-  const startRecording = useCallback(() => {
-    const combinedStream = createCombinedStream();
-    
-    if (combinedStream.getTracks().length === 0) {
-      console.warn('No streams available for recording');
-      return;
-    }
-    
-    recordedChunksRef.current = [];
-    
-    // Prioritize H.264 + AAC for maximum compatibility
-    const codecOptions = [
-      'video/mp4;codecs=avc1.42E01E,mp4a.40.2', // H.264 Baseline + AAC-LC (best compatibility)
-      'video/mp4;codecs=avc1.4D401E,mp4a.40.2', // H.264 Main + AAC-LC
-      'video/mp4;codecs=avc1.64001E,mp4a.40.2', // H.264 High + AAC-LC
-      'video/mp4', // Generic MP4
-      'video/webm;codecs=vp9,opus', // VP9 + Opus (good quality)
-      'video/webm;codecs=vp8,opus', // VP8 + Opus (fallback)
-      'video/webm' // Generic WebM
-    ];
-    
-    let selectedMimeType = 'video/webm'; // Ultimate fallback
-    for (const codec of codecOptions) {
-      if (MediaRecorder.isTypeSupported(codec)) {
-        selectedMimeType = codec;
-        console.log('Selected codec:', codec);
-        break;
-      }
-    }
-    
-    try {
-      const options: MediaRecorderOptions = {
-        mimeType: selectedMimeType,
-      };
+    if (combinedStream.getTracks().length > 0) {
+      recordedChunksRef.current = [];
       
-      // Add bitrate settings for supported codecs
-      if (selectedMimeType.includes('mp4') || selectedMimeType.includes('h264')) {
-        options.videoBitsPerSecond = 5000000; // 5 Mbps for H.264
-        options.audioBitsPerSecond = 128000;  // 128 kbps for AAC
-      } else if (selectedMimeType.includes('webm')) {
-        options.videoBitsPerSecond = 3000000; // 3 Mbps for WebM
-        options.audioBitsPerSecond = 128000;  // 128 kbps for Opus
+      // Try different codec combinations for better compatibility
+      const codecOptions = [
+        'video/mp4;codecs=h264,aac',
+        'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+        'video/mp4',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm'
+      ];
+      
+      let mimeType = 'video/webm'; // fallback
+      for (const codec of codecOptions) {
+        if (MediaRecorder.isTypeSupported(codec)) {
+          mimeType = codec;
+          break;
+        }
       }
       
-      const mediaRecorder = new MediaRecorder(combinedStream, options);
+      console.log('Using codec:', mimeType);
+      
+      const mediaRecorder = new MediaRecorder(combinedStream, {
+        mimeType: mimeType,
+        videoBitsPerSecond: 8000000, // 8 Mbps for high quality
+        audioBitsPerSecond: 320000,  // 320 kbps for high quality audio
+      });
       
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           recordedChunksRef.current.push(event.data);
-          console.log('Recorded chunk:', event.data.size, 'bytes');
         }
       };
       
       mediaRecorder.onstop = () => {
-        console.log('Recording stopped, processing', recordedChunksRef.current.length, 'chunks');
-        
-        if (recordedChunksRef.current.length === 0) {
-          console.error('No recorded chunks available');
-          return;
-        }
-        
-        const blob = new Blob(recordedChunksRef.current, { type: selectedMimeType });
-        console.log('Final blob size:', blob.size, 'bytes, type:', blob.type);
-        
+        const blob = new Blob(recordedChunksRef.current, { type: mimeType });
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         
         // Use appropriate file extension
-        const extension = selectedMimeType.includes('mp4') ? 'mp4' : 'webm';
-        const filename = `kawaii-recording-${timestamp}.${extension}`;
-        
-        downloadFile(blob, filename);
+        const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+        downloadFile(blob, `kawaii-recording-${timestamp}.${extension}`);
         recordedChunksRef.current = [];
-        
-        console.log('Recording saved as:', filename);
       };
       
-      mediaRecorder.onerror = (event) => {
-        console.error('MediaRecorder error:', event);
-      };
-      
-      // Start recording with 1-second chunks for better reliability
-      mediaRecorder.start(1000);
+      mediaRecorder.start(1000); // Record in 1-second chunks
       mediaRecorderRef.current = mediaRecorder;
-      
-      console.log('Recording started with codec:', selectedMimeType);
       
       setMediaState(prev => ({
         ...prev,
         isRecording: true,
       }));
-    } catch (error) {
-      console.error('Failed to start recording:', error);
+    } else {
+      console.warn('No streams available for recording');
     }
-  }, [createCombinedStream, downloadFile]);
+  }, [mediaState.screenStream, mediaState.cameraStream, downloadFile]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      console.log('Stopping recording...');
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current = null;
       
