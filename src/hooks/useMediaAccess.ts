@@ -26,7 +26,7 @@ export const useMediaAccess = () => {
     microphoneStream: null,
     audioLevel: 0,
     microphoneVolume: 75,
-    screenAudioVolume: 50,
+    screenAudioVolume: 80, // Increased default volume
     availableMicrophones: [],
     selectedMicrophone: 'default',
   });
@@ -49,7 +49,7 @@ export const useMediaAccess = () => {
       setMediaState(prev => ({
         ...prev,
         microphoneVolume: savedMicVolume ? parseInt(savedMicVolume) : 75,
-        screenAudioVolume: savedScreenVolume ? parseInt(savedScreenVolume) : 50,
+        screenAudioVolume: savedScreenVolume ? parseInt(savedScreenVolume) : 80,
         selectedMicrophone: savedMicrophone || 'default',
       }));
     }
@@ -128,8 +128,8 @@ export const useMediaAccess = () => {
         source.connect(gainNode);
         gainNode.connect(destination);
         
-        // Apply saved volume setting
-        gainNode.gain.value = mediaState.screenAudioVolume / 100;
+        // Apply saved volume setting with higher gain
+        gainNode.gain.value = (mediaState.screenAudioVolume / 100) * 2; // Double the gain for better volume
         screenGainNodeRef.current = gainNode;
         
         // Replace audio track with volume-controlled one
@@ -311,7 +311,8 @@ export const useMediaAccess = () => {
     localStorage.setItem('kawaii-screen-volume', volume.toString());
     
     if (screenGainNodeRef.current) {
-      screenGainNodeRef.current.gain.value = volume / 100;
+      // Apply higher gain for better volume
+      screenGainNodeRef.current.gain.value = (volume / 100) * 2;
     }
   }, []);
 
@@ -321,15 +322,15 @@ export const useMediaAccess = () => {
   }, []);
 
   const startRecording = useCallback(() => {
+    // Create a new audio context for mixing audio streams
+    const mixingContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const mixingDestination = mixingContext.createMediaStreamDestination();
+    
     const combinedStream = new MediaStream();
     
     // Add video tracks from screen and camera
     if (mediaState.screenStream) {
       mediaState.screenStream.getVideoTracks().forEach(track => {
-        combinedStream.addTrack(track);
-      });
-      // Add system audio from screen capture (with volume control applied)
-      mediaState.screenStream.getAudioTracks().forEach(track => {
         combinedStream.addTrack(track);
       });
     }
@@ -340,9 +341,34 @@ export const useMediaAccess = () => {
       });
     }
     
-    // Add microphone audio (with volume control applied)
-    if (mediaState.microphoneStream) {
-      mediaState.microphoneStream.getAudioTracks().forEach(track => {
+    // Mix audio streams properly
+    let hasAudio = false;
+    
+    // Add screen audio if available
+    if (mediaState.screenStream && mediaState.screenStream.getAudioTracks().length > 0) {
+      const screenAudioSource = mixingContext.createMediaStreamSource(mediaState.screenStream);
+      const screenGain = mixingContext.createGain();
+      screenGain.gain.value = (mediaState.screenAudioVolume / 100) * 2; // Higher gain for screen audio
+      
+      screenAudioSource.connect(screenGain);
+      screenGain.connect(mixingDestination);
+      hasAudio = true;
+    }
+    
+    // Add microphone audio if available
+    if (mediaState.microphoneStream && mediaState.microphoneStream.getAudioTracks().length > 0) {
+      const micAudioSource = mixingContext.createMediaStreamSource(mediaState.microphoneStream);
+      const micGain = mixingContext.createGain();
+      micGain.gain.value = mediaState.microphoneVolume / 100;
+      
+      micAudioSource.connect(micGain);
+      micGain.connect(mixingDestination);
+      hasAudio = true;
+    }
+    
+    // Add mixed audio track to combined stream
+    if (hasAudio) {
+      mixingDestination.stream.getAudioTracks().forEach(track => {
         combinedStream.addTrack(track);
       });
     }
@@ -378,6 +404,9 @@ export const useMediaAccess = () => {
         // Save as .mp4 extension for better compatibility
         downloadFile(webmBlob, `kawaii-recording-${timestamp}.mp4`);
         recordedChunksRef.current = [];
+        
+        // Clean up mixing context
+        mixingContext.close();
       };
       
       mediaRecorder.start(1000); // Record in 1-second chunks for better reliability
@@ -390,7 +419,7 @@ export const useMediaAccess = () => {
     } else {
       console.warn('No streams available for recording');
     }
-  }, [mediaState.screenStream, mediaState.cameraStream, mediaState.microphoneStream, downloadFile]);
+  }, [mediaState.screenStream, mediaState.cameraStream, mediaState.microphoneStream, mediaState.screenAudioVolume, mediaState.microphoneVolume, downloadFile]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
