@@ -216,8 +216,8 @@ export const useMediaAccess = () => {
 
       const originalStream = await navigator.mediaDevices.getUserMedia(constraints);
       
-      // Store the original stream for recording (CRITICAL: This is what gets recorded)
-      originalMicStreamRef.current = originalStream;
+      // CRITICAL: Store the original, unprocessed stream for recording
+      originalMicStreamRef.current = originalStream.clone();
       
       // Create a separate stream for preview/monitoring with volume control
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -232,7 +232,7 @@ export const useMediaAccess = () => {
       
       analyser.fftSize = 256;
       
-      // Apply saved volume setting for monitoring
+      // Apply saved volume setting for monitoring only
       gainNode.gain.value = mediaState.microphoneVolume / 100;
       
       audioContextRef.current = audioContext;
@@ -352,9 +352,12 @@ export const useMediaAccess = () => {
     // CRITICAL: Add the ORIGINAL microphone stream for recording (not the processed preview stream)
     if (originalMicStreamRef.current) {
       originalMicStreamRef.current.getAudioTracks().forEach(track => {
+        console.log('Adding microphone track to recording:', track);
         combinedStream.addTrack(track);
       });
     }
+    
+    console.log('Combined stream tracks:', combinedStream.getTracks().map(t => ({ kind: t.kind, label: t.label })));
     
     if (combinedStream.getTracks().length > 0) {
       recordedChunksRef.current = [];
