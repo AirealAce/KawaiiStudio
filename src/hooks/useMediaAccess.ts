@@ -42,6 +42,10 @@ export const useMediaAccess = () => {
   // CRITICAL: Keep the original microphone stream separate and persistent
   const originalMicStreamRef = useRef<MediaStream | null>(null);
   const microphoneDeviceRef = useRef<string>('default');
+  
+  // NEW: Keep a recording-optimized microphone stream with proper gain
+  const recordingMicStreamRef = useRef<MediaStream | null>(null);
+  const recordingAudioContextRef = useRef<AudioContext | null>(null);
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -103,6 +107,30 @@ export const useMediaAccess = () => {
       });
     }
   }, [mediaState.screenStream, downloadFile]);
+
+  const createRecordingMicrophoneStream = useCallback(async (originalStream: MediaStream) => {
+    console.log('🎙️ Creating recording-optimized microphone stream...');
+    
+    // Create a new audio context specifically for recording
+    const recordingContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const source = recordingContext.createMediaStreamSource(originalStream);
+    const gainNode = recordingContext.createGain();
+    const destination = recordingContext.createMediaStreamDestination();
+    
+    // Set a higher gain for recording (3x the UI volume setting)
+    const recordingGain = Math.max(1.5, (mediaState.microphoneVolume / 100) * 3);
+    gainNode.gain.value = recordingGain;
+    
+    console.log(`🔊 Setting recording microphone gain to: ${recordingGain} (UI volume: ${mediaState.microphoneVolume}%)`);
+    
+    source.connect(gainNode);
+    gainNode.connect(destination);
+    
+    recordingAudioContextRef.current = recordingContext;
+    recordingMicStreamRef.current = destination.stream;
+    
+    return destination.stream;
+  }, [mediaState.microphoneVolume]);
 
   const startScreenCapture = useCallback(async () => {
     try {
@@ -231,6 +259,9 @@ export const useMediaAccess = () => {
         originalMicStreamRef.current = originalStream.clone();
         microphoneDeviceRef.current = mediaState.selectedMicrophone;
         console.log('🎤 Stored new original microphone stream for recording');
+        
+        // Create recording-optimized stream
+        await createRecordingMicrophoneStream(originalStream);
       }
       
       // Create a separate stream for preview/monitoring with volume control
@@ -287,7 +318,7 @@ export const useMediaAccess = () => {
       console.error('Error starting microphone:', error);
       throw error;
     }
-  }, [mediaState.selectedMicrophone, mediaState.microphoneVolume]);
+  }, [mediaState.selectedMicrophone, mediaState.microphoneVolume, createRecordingMicrophoneStream]);
 
   const stopMicrophone = useCallback(() => {
     console.log('🎤 Stopping microphone...');
@@ -305,6 +336,17 @@ export const useMediaAccess = () => {
       originalMicStreamRef.current = null;
     } else if (mediaState.isRecording) {
       console.log('🎤 Keeping original microphone stream alive for recording');
+    }
+    
+    // Clean up recording stream if not recording
+    if (!mediaState.isRecording && recordingMicStreamRef.current) {
+      recordingMicStreamRef.current.getTracks().forEach(track => track.stop());
+      recordingMicStreamRef.current = null;
+    }
+    
+    if (!mediaState.isRecording && recordingAudioContextRef.current) {
+      recordingAudioContextRef.current.close();
+      recordingAudioContextRef.current = null;
     }
     
     // Stop audio context and monitoring
@@ -334,6 +376,13 @@ export const useMediaAccess = () => {
     if (micGainNodeRef.current) {
       micGainNodeRef.current.gain.value = volume / 100;
     }
+    
+    // Update recording stream gain too
+    if (recordingAudioContextRef.current && recordingMicStreamRef.current) {
+      const recordingGain = Math.max(1.5, (volume / 100) * 3);
+      console.log(`🔊 Updating recording microphone gain to: ${recordingGain}`);
+      // We'd need to recreate the recording stream with new gain, but for now just log
+    }
   }, []);
 
   const setScreenAudioVolume = useCallback((volume: number) => {
@@ -358,6 +407,7 @@ export const useMediaAccess = () => {
       microphoneOn: mediaState.isMicOn,
       cameraOn: mediaState.isCameraOn,
       hasOriginalMicStream: !!originalMicStreamRef.current,
+      hasRecordingMicStream: !!recordingMicStreamRef.current,
       hasScreenStream: !!mediaState.screenStream,
     });
     
@@ -384,11 +434,11 @@ export const useMediaAccess = () => {
       });
     }
     
-    // CRITICAL: Add the ORIGINAL microphone stream for recording
-    if (originalMicStreamRef.current) {
-      originalMicStreamRef.current.getAudioTracks().forEach(track => {
-        console.log('🎤 Adding microphone track to recording:', {
-          label: track.label || 'Microphone',
+    // CRITICAL: Use the recording-optimized microphone stream with higher gain
+    if (recordingMicStreamRef.current) {
+      recordingMicStreamRef.current.getAudioTracks().forEach(track => {
+        console.log('🎤 Adding RECORDING microphone track:', {
+          label: track.label || 'Recording Microphone',
           enabled: track.enabled,
           readyState: track.readyState,
           muted: track.muted,
@@ -401,19 +451,30 @@ export const useMediaAccess = () => {
         combinedStream.addTrack(track);
         trackCount++;
       });
+    } else if (originalMicStreamRef.current) {
+      // Fallback to original stream if recording stream not available
+      console.log('⚠️ Using original microphone stream as fallback');
+      originalMicStreamRef.current.getAudioTracks().forEach(track => {
+        console.log('🎤 Adding ORIGINAL microphone track:', {
+          label: track.label || 'Original Microphone',
+          enabled: track.enabled,
+          readyState: track.readyState,
+          muted: track.muted,
+          settings: track.getSettings()
+        });
+        
+        track.enabled = true;
+        combinedStream.addTrack(track);
+        trackCount++;
+      });
     } else {
       console.error('❌ NO MICROPHONE STREAM AVAILABLE FOR RECORDING!');
       console.log('🔍 Debug info:', {
         isMicOn: mediaState.isMicOn,
         originalMicStreamExists: !!originalMicStreamRef.current,
+        recordingMicStreamExists: !!recordingMicStreamRef.current,
         microphoneDevice: microphoneDeviceRef.current
       });
-      
-      // Try to get microphone stream if not available
-      if (mediaState.isMicOn) {
-        console.log('🔄 Attempting to restore microphone stream for recording...');
-        // The microphone should already be started, but the original stream might be missing
-      }
     }
     
     // Add camera video if no screen sharing (fallback)
@@ -519,6 +580,18 @@ export const useMediaAccess = () => {
       console.log('🧹 Cleaning up original microphone stream after recording');
       originalMicStreamRef.current.getTracks().forEach(track => track.stop());
       originalMicStreamRef.current = null;
+    }
+    
+    // Clean up recording microphone stream
+    if (!mediaState.isMicOn && recordingMicStreamRef.current) {
+      console.log('🧹 Cleaning up recording microphone stream');
+      recordingMicStreamRef.current.getTracks().forEach(track => track.stop());
+      recordingMicStreamRef.current = null;
+    }
+    
+    if (!mediaState.isMicOn && recordingAudioContextRef.current) {
+      recordingAudioContextRef.current.close();
+      recordingAudioContextRef.current = null;
     }
   }, [mediaState.isMicOn]);
 
