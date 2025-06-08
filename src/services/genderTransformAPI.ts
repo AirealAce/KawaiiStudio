@@ -1,5 +1,5 @@
-// Real AI Gender Transformation Service
-// This integrates with actual AI APIs for physical transformation
+// CSS-Only Gender Transformation Service
+// No external APIs required - uses advanced CSS filters and canvas processing
 
 interface TransformationConfig {
   targetGender: 'female' | 'male';
@@ -20,141 +20,17 @@ interface APIResponse {
 }
 
 class GenderTransformAPI {
-  private apiKey: string;
-  private baseUrl: string;
-
   constructor() {
-    // These would be set via environment variables in production
-    this.apiKey = import.meta.env.VITE_GENDER_TRANSFORM_API_KEY || '';
-    this.baseUrl = 'https://api.akool.com/api/v1'; // Example API
+    // No API keys needed - CSS only implementation
   }
 
-  // Convert video frame to base64 for API processing
-  private async frameToBase64(video: HTMLVideoElement): Promise<string> {
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d')!;
-    
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    
-    ctx.drawImage(video, 0, 0);
-    
-    return canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-  }
-
-  // AKOOL Live Face Swap API Integration
-  async transformWithAKOOL(
-    imageData: string,
-    config: TransformationConfig
-  ): Promise<APIResponse> {
-    try {
-      const response = await fetch(`${this.baseUrl}/faceswap/live`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.apiKey}`,
-        },
-        body: JSON.stringify({
-          source_image: imageData,
-          target_gender: config.targetGender,
-          intensity: config.intensity,
-          features: config.features,
-          real_time: true,
-        }),
-      });
-
-      const result = await response.json();
-      
-      if (result.success) {
-        return {
-          success: true,
-          transformedImageUrl: result.transformed_image,
-          processingTime: result.processing_time,
-        };
-      } else {
-        return {
-          success: false,
-          error: result.message || 'Transformation failed',
-        };
-      }
-    } catch (error) {
-      console.error('AKOOL API Error:', error);
-      return {
-        success: false,
-        error: `API Error: ${error}`,
-      };
-    }
-  }
-
-  // FaceApp API Integration (Alternative)
-  async transformWithFaceApp(
-    imageData: string,
-    config: TransformationConfig
-  ): Promise<APIResponse> {
-    try {
-      const response = await fetch('https://api.faceapp.com/api/v3.2/photos', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-FaceApp-DeviceID': 'web-client',
-        },
-        body: JSON.stringify({
-          image: imageData,
-          filters: config.targetGender === 'female' ? ['female', 'makeup', 'hair_female'] : ['male', 'beard'],
-          crop: true,
-        }),
-      });
-
-      const result = await response.json();
-      
-      return {
-        success: true,
-        transformedImageUrl: result.url,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: `FaceApp Error: ${error}`,
-      };
-    }
-  }
-
-  // DeepAR Web SDK Integration (Real-time)
-  async initializeDeepAR(): Promise<any> {
-    try {
-      // Load DeepAR SDK
-      const script = document.createElement('script');
-      script.src = 'https://cdn.deepar.ai/js/deepar.js';
-      document.head.appendChild(script);
-
-      return new Promise((resolve, reject) => {
-        script.onload = () => {
-          // Initialize DeepAR with gender swap effects
-          const deepAR = new (window as any).DeepAR({
-            licenseKey: import.meta.env.VITE_DEEPAR_LICENSE_KEY,
-            canvas: document.createElement('canvas'),
-            additionalOptions: {
-              hint: 'faceTracking',
-              faceTrackingConfig: {
-                maxFaces: 1,
-              },
-            },
-          });
-
-          resolve(deepAR);
-        };
-        script.onerror = reject;
-      });
-    } catch (error) {
-      throw new Error(`DeepAR initialization failed: ${error}`);
-    }
-  }
-
-  // Real-time transformation using WebRTC and AI
+  // Enhanced CSS-based transformation with canvas processing
   async createTransformationStream(
     sourceStream: MediaStream,
     config: TransformationConfig
   ): Promise<MediaStream> {
+    console.log(`🎭 Creating CSS-based ${config.targetGender} transformation...`);
+    
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d')!;
     const video = document.createElement('video');
@@ -164,86 +40,145 @@ class GenderTransformAPI {
     video.playsInline = true;
     await video.play();
 
+    // Wait for video metadata to load
+    await new Promise((resolve) => {
+      video.addEventListener('loadedmetadata', resolve, { once: true });
+    });
+
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
 
     const outputStream = canvas.captureStream(30);
-    let lastProcessTime = 0;
-    const processInterval = 100; // Process every 100ms for real-time feel
 
-    const processFrame = async () => {
-      const now = Date.now();
-      
-      if (now - lastProcessTime > processInterval) {
-        try {
-          // Capture current frame
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const frameData = await this.frameToBase64(video);
-          
-          // Transform with AI (using AKOOL as primary)
-          const result = await this.transformWithAKOOL(frameData, config);
-          
-          if (result.success && result.transformedImageUrl) {
-            // Load transformed image and draw to canvas
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-              ctx.clearRect(0, 0, canvas.width, canvas.height);
-              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-            };
-            img.src = result.transformedImageUrl;
-          }
-          
-          lastProcessTime = now;
-        } catch (error) {
-          console.error('Frame processing error:', error);
-          // Fall back to original frame
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const processFrame = () => {
+      if (video.readyState >= 2) {
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Save context for transformations
+        ctx.save();
+        
+        // Apply gender-specific transformations
+        if (config.targetGender === 'female') {
+          this.applyFeminineTransform(ctx, canvas.width, canvas.height, config.intensity);
+        } else {
+          this.applyMasculineTransform(ctx, canvas.width, canvas.height, config.intensity);
         }
-      } else {
-        // Use previous frame or original
+        
+        // Draw the video frame
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        // Apply post-processing effects
+        if (config.targetGender === 'female') {
+          this.applyFeminineEffects(ctx, canvas.width, canvas.height, config.intensity);
+        } else {
+          this.applyMasculineEffects(ctx, canvas.width, canvas.height, config.intensity);
+        }
+        
+        ctx.restore();
       }
       
       requestAnimationFrame(processFrame);
     };
 
-    video.addEventListener('loadedmetadata', () => {
-      processFrame();
-    });
-
+    processFrame();
     return outputStream;
   }
 
-  // Check API availability and credentials
+  private applyFeminineTransform(ctx: CanvasRenderingContext2D, width: number, height: number, intensity: number) {
+    const factor = intensity / 100;
+    
+    // Mirror and slightly compress vertically for slimmer appearance
+    ctx.scale(-1, 1 - (0.05 * factor));
+    ctx.translate(-width, 0);
+    
+    // Apply feminine color adjustments
+    const contrast = 1 + (0.2 * factor);
+    const brightness = 1 + (0.1 * factor);
+    const saturation = 1 + (0.3 * factor);
+    const hueRotate = 10 * factor;
+    const blur = 0.5 * factor;
+    
+    ctx.filter = `contrast(${contrast}) brightness(${brightness}) saturate(${saturation}) hue-rotate(${hueRotate}deg) blur(${blur}px)`;
+  }
+
+  private applyMasculineTransform(ctx: CanvasRenderingContext2D, width: number, height: number, intensity: number) {
+    const factor = intensity / 100;
+    
+    // Mirror and slightly stretch vertically for broader appearance
+    ctx.scale(-1, 1 + (0.05 * factor));
+    ctx.translate(-width, 0);
+    
+    // Apply masculine color adjustments
+    const contrast = 1 + (0.3 * factor);
+    const brightness = 1 - (0.1 * factor);
+    const saturation = 1 - (0.2 * factor);
+    const hueRotate = -10 * factor;
+    const blur = 0.1 * factor;
+    
+    ctx.filter = `contrast(${contrast}) brightness(${brightness}) saturate(${saturation}) hue-rotate(${hueRotate}deg) blur(${blur}px)`;
+  }
+
+  private applyFeminineEffects(ctx: CanvasRenderingContext2D, width: number, height: number, intensity: number) {
+    const factor = intensity / 100;
+    
+    // Soft pink glow overlay
+    const gradient = ctx.createRadialGradient(
+      width / 2, height / 2, 0,
+      width / 2, height / 2, Math.max(width, height) / 2
+    );
+    gradient.addColorStop(0, `rgba(255, 182, 193, ${0.25 * factor})`);
+    gradient.addColorStop(0.5, `rgba(255, 192, 203, ${0.15 * factor})`);
+    gradient.addColorStop(1, 'transparent');
+    
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    
+    // Soft highlight for "makeup" effect
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = `rgba(255, 255, 255, ${0.1 * factor})`;
+    ctx.fillRect(0, height * 0.3, width, height * 0.4);
+    
+    // Lip enhancement area
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.fillStyle = `rgba(255, 100, 150, ${0.2 * factor})`;
+    ctx.fillRect(width * 0.35, height * 0.65, width * 0.3, height * 0.1);
+  }
+
+  private applyMasculineEffects(ctx: CanvasRenderingContext2D, width: number, height: number, intensity: number) {
+    const factor = intensity / 100;
+    
+    // Cool blue overlay
+    const gradient = ctx.createRadialGradient(
+      width / 2, height / 2, 0,
+      width / 2, height / 2, Math.max(width, height) / 2
+    );
+    gradient.addColorStop(0, `rgba(135, 206, 235, ${0.25 * factor})`);
+    gradient.addColorStop(0.5, `rgba(173, 216, 230, ${0.15 * factor})`);
+    gradient.addColorStop(1, 'transparent');
+    
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    
+    // Shadow for more defined features
+    ctx.globalCompositeOperation = 'multiply';
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.15 * factor})`;
+    ctx.fillRect(0, height * 0.6, width, height * 0.4);
+    
+    // Jawline enhancement
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.fillStyle = `rgba(100, 100, 100, ${0.1 * factor})`;
+    ctx.fillRect(width * 0.2, height * 0.7, width * 0.6, height * 0.15);
+  }
+
+  // Check API availability (always returns CSS-only mode)
   async checkAPIStatus(): Promise<{ available: boolean; provider: string; error?: string }> {
-    // Check AKOOL first
-    if (this.apiKey) {
-      try {
-        const response = await fetch(`${this.baseUrl}/status`, {
-          headers: { 'Authorization': `Bearer ${this.apiKey}` },
-        });
-        
-        if (response.ok) {
-          return { available: true, provider: 'AKOOL' };
-        }
-      } catch (error) {
-        console.log('AKOOL not available, checking alternatives...');
-      }
-    }
-
-    // Check DeepAR
-    try {
-      await this.initializeDeepAR();
-      return { available: true, provider: 'DeepAR' };
-    } catch (error) {
-      console.log('DeepAR not available...');
-    }
-
     return {
-      available: false,
-      provider: 'none',
-      error: 'No AI transformation APIs are configured. Please add API keys for AKOOL, DeepAR, or FaceApp.',
+      available: true,
+      provider: 'CSS Enhanced Filters',
+      error: undefined,
     };
   }
 }
