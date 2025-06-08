@@ -23,6 +23,7 @@ function App() {
     setMicrophoneVolume,
     setScreenAudioVolume,
     setSelectedMicrophone,
+    setGenderFilter,
   } = useMediaAccess();
 
   const { playSuccess, playError, playNotification } = useSound();
@@ -31,7 +32,6 @@ function App() {
   const [viewerCount] = useState(Math.floor(Math.random() * 1000) + 50);
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [genderFilter, setGenderFilter] = useState<'none' | 'feminine' | 'masculine'>('none');
 
   useEffect(() => {
     if (mediaState.isRecording && !startTime) {
@@ -94,7 +94,6 @@ function App() {
     try {
       if (mediaState.isCameraOn) {
         stopCamera();
-        setGenderFilter('none'); // Reset filter when camera is turned off
       } else {
         await startCamera();
         playSuccess();
@@ -153,6 +152,17 @@ function App() {
   const handleFilters = () => {
     setShowFiltersModal(true);
     playNotification();
+  };
+
+  const handleGenderFilter = async (filter: 'none' | 'feminine' | 'masculine') => {
+    try {
+      await setGenderFilter(filter);
+      playSuccess();
+    } catch (error) {
+      console.error('Gender filter error:', error);
+      playError();
+      showError('💔 Failed to apply gender filter. Please try again! 🌟');
+    }
   };
 
   return (
@@ -239,8 +249,8 @@ function App() {
             setMicrophoneVolume={setMicrophoneVolume}
             setScreenAudioVolume={setScreenAudioVolume}
             setSelectedMicrophone={setSelectedMicrophone}
-            genderFilter={genderFilter}
-            setGenderFilter={setGenderFilter}
+            genderFilter={mediaState.genderFilter}
+            setGenderFilter={handleGenderFilter}
           />
         </div>
       </div>
@@ -249,12 +259,12 @@ function App() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Camera Preview */}
         <VideoPreview
-          stream={mediaState.cameraStream}
+          stream={mediaState.transformedCameraStream || mediaState.cameraStream}
           title="Camera"
           emoji="📷"
           isActive={mediaState.isCameraOn}
           className="h-64"
-          genderFilter={genderFilter}
+          genderFilter={mediaState.genderFilter}
         />
 
         {/* Audio Visualizer */}
@@ -331,10 +341,9 @@ function App() {
                 <div className="grid grid-cols-1 gap-3">
                   <KawaiiButton
                     onClick={() => {
-                      setGenderFilter('none');
-                      playSuccess();
+                      handleGenderFilter('none');
                     }}
-                    variant={genderFilter === 'none' ? 'primary' : 'secondary'}
+                    variant={mediaState.genderFilter === 'none' ? 'primary' : 'secondary'}
                     emoji="🚫"
                     size="sm"
                     className="w-full"
@@ -344,34 +353,34 @@ function App() {
                   
                   <KawaiiButton
                     onClick={() => {
-                      setGenderFilter('feminine');
-                      playSuccess();
+                      handleGenderFilter('feminine');
                     }}
-                    variant={genderFilter === 'feminine' ? 'primary' : 'secondary'}
+                    variant={mediaState.genderFilter === 'feminine' ? 'primary' : 'secondary'}
                     emoji="👩"
                     size="sm"
                     className="w-full bg-gradient-to-r from-pink-400 to-purple-500 hover:from-pink-500 hover:to-purple-600"
+                    disabled={mediaState.isFilterProcessing}
                   >
-                    Feminine Enhancement
+                    {mediaState.isFilterProcessing && mediaState.genderFilter === 'feminine' ? 'Processing...' : 'Feminine Enhancement'}
                   </KawaiiButton>
                   
                   <KawaiiButton
                     onClick={() => {
-                      setGenderFilter('masculine');
-                      playSuccess();
+                      handleGenderFilter('masculine');
                     }}
-                    variant={genderFilter === 'masculine' ? 'primary' : 'secondary'}
+                    variant={mediaState.genderFilter === 'masculine' ? 'primary' : 'secondary'}
                     emoji="👨"
                     size="sm"
                     className="w-full bg-gradient-to-r from-blue-400 to-indigo-500 hover:from-blue-500 hover:to-indigo-600"
+                    disabled={mediaState.isFilterProcessing}
                   >
-                    Masculine Enhancement
+                    {mediaState.isFilterProcessing && mediaState.genderFilter === 'masculine' ? 'Processing...' : 'Masculine Enhancement'}
                   </KawaiiButton>
                 </div>
                 
                 <div className="bg-gradient-to-r from-pink-50 to-blue-50 p-3 rounded-xl border-2 border-gradient-to-r from-pink-200 to-blue-200 mt-4">
                   <p className="font-kawaii text-kawaii-purple-700 text-xs text-center">
-                    💡 <strong>Tip:</strong> These filters use advanced visual effects to enhance facial features and create gender-bending transformations in real-time! 🎭✨
+                    💡 <strong>Current:</strong> Enhanced CSS filters with real-time processing! For AI-powered transformations, integrate with AKOOL or similar APIs. 🎭✨
                   </p>
                 </div>
               </div>

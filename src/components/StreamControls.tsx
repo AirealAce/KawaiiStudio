@@ -88,6 +88,13 @@ export const StreamControls: React.FC<StreamControlsProps> = ({
     playSuccess();
   };
 
+  const handleGenderFilterChange = (filter: 'none' | 'feminine' | 'masculine') => {
+    if (setGenderFilter) {
+      setGenderFilter(filter);
+      playSuccess();
+    }
+  };
+
   return (
     <div className="bg-white/30 backdrop-blur-kawaii rounded-2xl p-6 border-2 border-kawaii-pink-300 shadow-lg">
       <h2 className="font-kawaii font-bold text-2xl text-kawaii-purple-800 mb-6 text-center flex items-center justify-center gap-2">
@@ -167,6 +174,51 @@ export const StreamControls: React.FC<StreamControlsProps> = ({
           </div>
         </KawaiiButton>
       </div>
+
+      {/* Gender Filter Quick Controls */}
+      {isCameraOn && (
+        <div className="mb-6 p-4 bg-white/20 rounded-xl border-2 border-kawaii-pink-200">
+          <h3 className="font-kawaii font-bold text-sm text-kawaii-purple-800 mb-3 text-center flex items-center justify-center gap-2">
+            <span className="text-lg">⚧️</span>
+            Gender Filter
+            <span className="text-lg">🎭</span>
+          </h3>
+          
+          <div className="grid grid-cols-3 gap-2">
+            <KawaiiButton
+              onClick={() => handleGenderFilterChange('none')}
+              variant={genderFilter === 'none' ? 'primary' : 'secondary'}
+              emoji="🚫"
+              size="sm"
+              className="text-xs"
+            >
+              None
+            </KawaiiButton>
+            
+            <KawaiiButton
+              onClick={() => handleGenderFilterChange('feminine')}
+              variant={genderFilter === 'feminine' ? 'primary' : 'secondary'}
+              emoji="👩"
+              size="sm"
+              className="text-xs bg-gradient-to-r from-pink-400 to-purple-500 hover:from-pink-500 hover:to-purple-600"
+              disabled={mediaState?.isFilterProcessing}
+            >
+              {mediaState?.isFilterProcessing && genderFilter === 'feminine' ? '...' : 'Fem'}
+            </KawaiiButton>
+            
+            <KawaiiButton
+              onClick={() => handleGenderFilterChange('masculine')}
+              variant={genderFilter === 'masculine' ? 'primary' : 'secondary'}
+              emoji="👨"
+              size="sm"
+              className="text-xs bg-gradient-to-r from-blue-400 to-indigo-500 hover:from-blue-500 hover:to-indigo-600"
+              disabled={mediaState?.isFilterProcessing}
+            >
+              {mediaState?.isFilterProcessing && genderFilter === 'masculine' ? '...' : 'Masc'}
+            </KawaiiButton>
+          </div>
+        </div>
+      )}
       
       <div className="grid grid-cols-2 gap-4 mb-4">
         <KawaiiButton

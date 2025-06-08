@@ -37,36 +37,25 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
     }
   };
 
-  const getFilterClasses = () => {
-    if (title !== 'Camera' || genderFilter === 'none') return '';
+  const getFilterIndicator = () => {
+    if (title !== 'Camera' || genderFilter === 'none') return null;
     
-    switch (genderFilter) {
-      case 'feminine':
-        return 'filter-feminine';
-      case 'masculine':
-        return 'filter-masculine';
-      default:
-        return '';
-    }
-  };
-
-  const getFilterStyles = () => {
-    if (title !== 'Camera' || genderFilter === 'none') return {};
+    const filterInfo = {
+      feminine: { emoji: '👩', label: 'Feminine', color: 'from-pink-400 to-purple-500' },
+      masculine: { emoji: '👨', label: 'Masculine', color: 'from-blue-400 to-indigo-500' }
+    };
     
-    switch (genderFilter) {
-      case 'feminine':
-        return {
-          filter: 'contrast(1.1) brightness(1.05) saturate(1.15) hue-rotate(5deg)',
-          transform: 'scaleX(-1) scaleY(0.98)',
-        };
-      case 'masculine':
-        return {
-          filter: 'contrast(1.15) brightness(0.95) saturate(0.9) hue-rotate(-5deg)',
-          transform: 'scaleX(-1) scaleY(1.02)',
-        };
-      default:
-        return {};
-    }
+    const info = filterInfo[genderFilter];
+    if (!info) return null;
+    
+    return (
+      <div className={`absolute top-16 left-4 z-10 bg-gradient-to-r ${info.color} text-white rounded-full px-3 py-1 text-xs font-kawaii font-semibold animate-pulse shadow-lg`}>
+        <span className="flex items-center gap-1">
+          <span>{info.emoji}</span>
+          {info.label} Filter Active
+        </span>
+      </div>
+    );
   };
 
   return (
@@ -80,13 +69,10 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
         <span className="font-kawaii font-semibold text-kawaii-purple-800 flex items-center gap-2">
           <span className="text-lg">{emoji}</span>
           {title}
-          {genderFilter !== 'none' && title === 'Camera' && (
-            <span className="text-sm">
-              {genderFilter === 'feminine' ? '👩' : '👨'}
-            </span>
-          )}
         </span>
       </div>
+      
+      {getFilterIndicator()}
       
       <div className="absolute top-4 right-4 z-10 bg-kawaii-pink-500/80 backdrop-blur-sm rounded-full px-2 py-1 text-white text-xs font-kawaii font-semibold animate-pulse">
         Double-click for fullscreen! ✨
@@ -98,8 +84,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
           autoPlay
           muted
           playsInline
-          className={`w-full h-full object-cover transition-all duration-500 ${getFilterClasses()}`}
-          style={getFilterStyles()}
+          className="w-full h-full object-cover transition-all duration-500"
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-kawaii-pink-50 to-kawaii-purple-50">
