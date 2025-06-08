@@ -43,7 +43,6 @@ export const StreamControls: React.FC<StreamControlsProps> = ({
   const { playSuccess, playError } = useSound();
   const [showMicSettings, setShowMicSettings] = useState(false);
   const [showScreenSettings, setShowScreenSettings] = useState(false);
-  const [showGenderFilter, setShowGenderFilter] = useState(false);
 
   const handleScreenShare = () => {
     if (isScreenSharing) playError();
@@ -89,11 +88,6 @@ export const StreamControls: React.FC<StreamControlsProps> = ({
     playSuccess();
   };
 
-  const handleGenderFilter = () => {
-    setShowGenderFilter(true);
-    playSuccess();
-  };
-
   return (
     <div className="bg-white/30 backdrop-blur-kawaii rounded-2xl p-6 border-2 border-kawaii-pink-300 shadow-lg">
       <h2 className="font-kawaii font-bold text-2xl text-kawaii-purple-800 mb-6 text-center flex items-center justify-center gap-2">
@@ -126,30 +120,17 @@ export const StreamControls: React.FC<StreamControlsProps> = ({
           </button>
         </div>
         
-        <div className="relative">
-          <KawaiiButton
-            onClick={handleCamera}
-            variant={isCameraOn ? 'danger' : 'secondary'}
-            emoji="📷"
-            className="h-16 w-full"
-          >
-            <div className="flex items-center gap-2">
-              <Camera size={20} />
-              {isCameraOn ? 'Stop Camera' : 'Start Camera'}
-            </div>
-          </KawaiiButton>
-          
-          {/* Gender Filter Button */}
-          {isCameraOn && (
-            <button
-              onClick={handleGenderFilter}
-              className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-r from-pink-500 to-blue-500 hover:from-pink-600 hover:to-blue-600 text-white rounded-full flex items-center justify-center shadow-lg transition-all duration-200 hover:scale-110 border-2 border-white"
-              title="Gender Bender Filter 🌈"
-            >
-              <span className="text-xs">⚧️</span>
-            </button>
-          )}
-        </div>
+        <KawaiiButton
+          onClick={handleCamera}
+          variant={isCameraOn ? 'danger' : 'secondary'}
+          emoji="📷"
+          className="h-16"
+        >
+          <div className="flex items-center gap-2">
+            <Camera size={20} />
+            {isCameraOn ? 'Stop Camera' : 'Start Camera'}
+          </div>
+        </KawaiiButton>
         
         <div className="relative">
           <KawaiiButton
@@ -226,88 +207,6 @@ export const StreamControls: React.FC<StreamControlsProps> = ({
           </div>
         </KawaiiButton>
       </div>
-
-      {/* Gender Bender Filter Modal */}
-      {showGenderFilter && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white/90 backdrop-blur-kawaii rounded-2xl p-8 border-4 border-gradient-to-r from-pink-300 to-blue-300 shadow-2xl max-w-md w-full">
-            <h3 className="font-kawaii font-bold text-2xl text-kawaii-purple-800 mb-6 text-center flex items-center justify-center gap-2">
-              <span className="text-3xl">⚧️</span>
-              Gender Bender Filter
-              <span className="text-3xl">🌈</span>
-            </h3>
-            
-            <div className="space-y-4 mb-6">
-              <div className="text-center mb-4">
-                <p className="font-kawaii text-kawaii-purple-700 text-sm">
-                  Transform your appearance with magical gender-bending effects! ✨
-                </p>
-              </div>
-              
-              <div className="grid grid-cols-1 gap-3">
-                <KawaiiButton
-                  onClick={() => {
-                    setGenderFilter?.('none');
-                    setShowGenderFilter(false);
-                    playSuccess();
-                  }}
-                  variant={genderFilter === 'none' ? 'primary' : 'secondary'}
-                  emoji="🚫"
-                  size="sm"
-                  className="w-full"
-                >
-                  No Filter (Natural)
-                </KawaiiButton>
-                
-                <KawaiiButton
-                  onClick={() => {
-                    setGenderFilter?.('feminine');
-                    setShowGenderFilter(false);
-                    playSuccess();
-                  }}
-                  variant={genderFilter === 'feminine' ? 'primary' : 'secondary'}
-                  emoji="👩"
-                  size="sm"
-                  className="w-full bg-gradient-to-r from-pink-400 to-purple-500 hover:from-pink-500 hover:to-purple-600"
-                >
-                  Feminine Enhancement
-                </KawaiiButton>
-                
-                <KawaiiButton
-                  onClick={() => {
-                    setGenderFilter?.('masculine');
-                    setShowGenderFilter(false);
-                    playSuccess();
-                  }}
-                  variant={genderFilter === 'masculine' ? 'primary' : 'secondary'}
-                  emoji="👨"
-                  size="sm"
-                  className="w-full bg-gradient-to-r from-blue-400 to-indigo-500 hover:from-blue-500 hover:to-indigo-600"
-                >
-                  Masculine Enhancement
-                </KawaiiButton>
-              </div>
-              
-              <div className="bg-gradient-to-r from-pink-50 to-blue-50 p-4 rounded-xl border-2 border-gradient-to-r from-pink-200 to-blue-200">
-                <p className="font-kawaii text-kawaii-purple-700 text-xs text-center">
-                  💡 <strong>Tip:</strong> These filters use advanced visual effects to enhance facial features and create gender-bending transformations in real-time! 🎭✨
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex gap-3 justify-center">
-              <KawaiiButton
-                onClick={() => setShowGenderFilter(false)}
-                emoji="❌"
-                variant="danger"
-                size="sm"
-              >
-                Close
-              </KawaiiButton>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Microphone Settings Modal */}
       {showMicSettings && (

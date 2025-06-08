@@ -318,6 +318,64 @@ function App() {
               <KawaiiButton emoji="💖" size="sm" variant="secondary">Hearts</KawaiiButton>
               <KawaiiButton emoji="🦄" size="sm" variant="success">Unicorn</KawaiiButton>
             </div>
+
+            {/* Gender Bender Filter Section */}
+            {mediaState.isCameraOn && (
+              <div className="mb-6">
+                <h4 className="font-kawaii font-bold text-lg text-kawaii-purple-800 mb-4 text-center flex items-center justify-center gap-2">
+                  <span className="text-2xl">⚧️</span>
+                  Gender Bender
+                  <span className="text-2xl">🌈</span>
+                </h4>
+                
+                <div className="grid grid-cols-1 gap-3">
+                  <KawaiiButton
+                    onClick={() => {
+                      setGenderFilter('none');
+                      playSuccess();
+                    }}
+                    variant={genderFilter === 'none' ? 'primary' : 'secondary'}
+                    emoji="🚫"
+                    size="sm"
+                    className="w-full"
+                  >
+                    No Filter (Natural)
+                  </KawaiiButton>
+                  
+                  <KawaiiButton
+                    onClick={() => {
+                      setGenderFilter('feminine');
+                      playSuccess();
+                    }}
+                    variant={genderFilter === 'feminine' ? 'primary' : 'secondary'}
+                    emoji="👩"
+                    size="sm"
+                    className="w-full bg-gradient-to-r from-pink-400 to-purple-500 hover:from-pink-500 hover:to-purple-600"
+                  >
+                    Feminine Enhancement
+                  </KawaiiButton>
+                  
+                  <KawaiiButton
+                    onClick={() => {
+                      setGenderFilter('masculine');
+                      playSuccess();
+                    }}
+                    variant={genderFilter === 'masculine' ? 'primary' : 'secondary'}
+                    emoji="👨"
+                    size="sm"
+                    className="w-full bg-gradient-to-r from-blue-400 to-indigo-500 hover:from-blue-500 hover:to-indigo-600"
+                  >
+                    Masculine Enhancement
+                  </KawaiiButton>
+                </div>
+                
+                <div className="bg-gradient-to-r from-pink-50 to-blue-50 p-3 rounded-xl border-2 border-gradient-to-r from-pink-200 to-blue-200 mt-4">
+                  <p className="font-kawaii text-kawaii-purple-700 text-xs text-center">
+                    💡 <strong>Tip:</strong> These filters use advanced visual effects to enhance facial features and create gender-bending transformations in real-time! 🎭✨
+                  </p>
+                </div>
+              </div>
+            )}
             
             <div className="text-center">
               <KawaiiButton
