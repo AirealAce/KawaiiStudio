@@ -1,9 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { genderTransformAPI, TransformationConfig } from '../services/genderTransformAPI';
 
 interface GenderFilterState {
   isProcessing: boolean;
   error: string | null;
   transformedStream: MediaStream | null;
+  apiStatus: { available: boolean; provider: string; error?: string } | null;
+  isAPIChecking: boolean;
 }
 
 export const useGenderFilter = () => {
@@ -11,12 +14,42 @@ export const useGenderFilter = () => {
     isProcessing: false,
     error: null,
     transformedStream: null,
+    apiStatus: null,
+    isAPIChecking: false,
   });
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const contextRef = useRef<CanvasRenderingContext2D | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Check API availability on mount
+  useEffect(() => {
+    const checkAPIs = async () => {
+      setFilterState(prev => ({ ...prev, isAPIChecking: true }));
+      
+      try {
+        const status = await genderTransformAPI.checkAPIStatus();
+        setFilterState(prev => ({ 
+          ...prev, 
+          apiStatus: status,
+          isAPIChecking: false,
+        }));
+      } catch (error) {
+        setFilterState(prev => ({ 
+          ...prev, 
+          apiStatus: { 
+            available: false, 
+            provider: 'none', 
+            error: `API check failed: ${error}` 
+          },
+          isAPIChecking: false,
+        }));
+      }
+    };
+
+    checkAPIs();
+  }, []);
 
   // Initialize canvas for video processing
   const initializeCanvas = useCallback(() => {
@@ -27,12 +60,49 @@ export const useGenderFilter = () => {
     return canvasRef.current && contextRef.current;
   }, []);
 
-  // Enhanced CSS-based transformation with better effects
+  // Real AI transformation using available APIs
+  const applyAITransformation = useCallback(async (
+    originalStream: MediaStream,
+    filterType: 'feminine' | 'masculine'
+  ): Promise<MediaStream> => {
+    console.log(`🤖 Applying real AI ${filterType} transformation...`);
+    
+    if (!filterState.apiStatus?.available) {
+      throw new Error('No AI transformation APIs are available. Please configure API keys.');
+    }
+
+    const config: TransformationConfig = {
+      targetGender: filterType === 'feminine' ? 'female' : 'male',
+      intensity: 85, // High intensity for noticeable changes
+      features: {
+        hair: true,        // Change hair style/length
+        makeup: filterType === 'feminine', // Add makeup for feminine
+        facialStructure: true, // Modify facial features
+        bodyShape: true,   // Adjust body proportions
+      },
+    };
+
+    try {
+      const transformedStream = await genderTransformAPI.createTransformationStream(
+        originalStream,
+        config
+      );
+      
+      console.log(`✅ Real AI ${filterType} transformation applied successfully`);
+      return transformedStream;
+      
+    } catch (error) {
+      console.error('AI transformation failed:', error);
+      throw new Error(`AI transformation failed: ${error}`);
+    }
+  }, [filterState.apiStatus]);
+
+  // Enhanced CSS-based transformation (fallback)
   const applyEnhancedFilter = useCallback((
     originalStream: MediaStream,
     filterType: 'feminine' | 'masculine'
   ): MediaStream => {
-    console.log(`🎭 Applying enhanced ${filterType} filter...`);
+    console.log(`🎭 Applying enhanced CSS ${filterType} filter as fallback...`);
     
     if (!initializeCanvas()) {
       console.error('Failed to initialize canvas');
@@ -64,51 +134,61 @@ export const useGenderFilter = () => {
         ctx.save();
         
         if (filterType === 'feminine') {
-          // Feminine enhancements
-          ctx.scale(-1, 0.98); // Mirror and slightly compress vertically
+          // Feminine enhancements - more dramatic
+          ctx.scale(-1, 0.95); // Mirror and compress vertically for slimmer face
           ctx.translate(-canvas.width, 0);
           
-          // Apply feminine color adjustments
-          ctx.filter = 'contrast(1.1) brightness(1.05) saturate(1.15) hue-rotate(5deg) blur(0.3px)';
+          // Apply stronger feminine color adjustments
+          ctx.filter = 'contrast(1.2) brightness(1.1) saturate(1.3) hue-rotate(10deg) blur(0.5px)';
         } else {
-          // Masculine enhancements
-          ctx.scale(-1, 1.02); // Mirror and slightly stretch vertically
+          // Masculine enhancements - more dramatic
+          ctx.scale(-1, 1.05); // Mirror and stretch vertically for broader face
           ctx.translate(-canvas.width, 0);
           
-          // Apply masculine color adjustments
-          ctx.filter = 'contrast(1.15) brightness(0.95) saturate(0.9) hue-rotate(-5deg) blur(0.2px)';
+          // Apply stronger masculine color adjustments
+          ctx.filter = 'contrast(1.3) brightness(0.9) saturate(0.8) hue-rotate(-10deg) blur(0.1px)';
         }
         
         // Draw the video frame
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        // Add overlay effects
+        // Add stronger overlay effects
         if (filterType === 'feminine') {
-          // Soft pink glow overlay
+          // Strong pink glow overlay for feminine look
           const gradient = ctx.createRadialGradient(
             canvas.width / 2, canvas.height / 2, 0,
             canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
           );
-          gradient.addColorStop(0, 'rgba(255, 182, 193, 0.1)');
-          gradient.addColorStop(0.7, 'rgba(255, 182, 193, 0.05)');
+          gradient.addColorStop(0, 'rgba(255, 182, 193, 0.25)');
+          gradient.addColorStop(0.5, 'rgba(255, 192, 203, 0.15)');
           gradient.addColorStop(1, 'transparent');
           
           ctx.globalCompositeOperation = 'overlay';
           ctx.fillStyle = gradient;
           ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Add soft highlight for "makeup" effect
+          ctx.globalCompositeOperation = 'screen';
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+          ctx.fillRect(0, canvas.height * 0.3, canvas.width, canvas.height * 0.4);
         } else {
-          // Cool blue overlay
+          // Strong blue overlay for masculine look
           const gradient = ctx.createRadialGradient(
             canvas.width / 2, canvas.height / 2, 0,
             canvas.width / 2, canvas.height / 2, Math.max(canvas.width, canvas.height) / 2
           );
-          gradient.addColorStop(0, 'rgba(135, 206, 235, 0.1)');
-          gradient.addColorStop(0.7, 'rgba(135, 206, 235, 0.05)');
+          gradient.addColorStop(0, 'rgba(135, 206, 235, 0.25)');
+          gradient.addColorStop(0.5, 'rgba(173, 216, 230, 0.15)');
           gradient.addColorStop(1, 'transparent');
           
           ctx.globalCompositeOperation = 'overlay';
           ctx.fillStyle = gradient;
           ctx.fillRect(0, 0, canvas.width, canvas.height);
+          
+          // Add shadow for more defined features
+          ctx.globalCompositeOperation = 'multiply';
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+          ctx.fillRect(0, canvas.height * 0.6, canvas.width, canvas.height * 0.4);
         }
         
         ctx.restore();
@@ -124,40 +204,38 @@ export const useGenderFilter = () => {
     return outputStream;
   }, [initializeCanvas]);
 
-  // Future: This is where you would integrate with AI APIs like AKOOL
-  const applyAIFilter = useCallback(async (
-    originalStream: MediaStream,
-    filterType: 'feminine' | 'masculine'
-  ): Promise<MediaStream> => {
-    console.log(`🤖 AI Filter requested: ${filterType}`);
-    
-    // Placeholder for AI API integration
-    // This is where you would:
-    // 1. Connect to AKOOL or similar API
-    // 2. Send video frames for processing
-    // 3. Receive transformed frames
-    // 4. Return the transformed stream
-    
-    setFilterState(prev => ({ ...prev, error: 'AI filters require API integration. Using enhanced CSS filters for now.' }));
-    
-    // For now, fall back to enhanced CSS filters
-    return applyEnhancedFilter(originalStream, filterType);
-  }, [applyEnhancedFilter]);
-
   const startGenderFilter = useCallback(async (
     originalStream: MediaStream,
     filterType: 'feminine' | 'masculine',
-    useAI: boolean = false
+    useAI: boolean = true
   ) => {
     try {
       setFilterState(prev => ({ ...prev, isProcessing: true, error: null }));
       
       let transformedStream: MediaStream;
       
-      if (useAI) {
-        transformedStream = await applyAIFilter(originalStream, filterType);
+      // Try AI transformation first if available and requested
+      if (useAI && filterState.apiStatus?.available) {
+        try {
+          transformedStream = await applyAITransformation(originalStream, filterType);
+          console.log('✅ Using real AI transformation');
+        } catch (aiError) {
+          console.warn('AI transformation failed, falling back to CSS filters:', aiError);
+          transformedStream = applyEnhancedFilter(originalStream, filterType);
+          setFilterState(prev => ({ 
+            ...prev, 
+            error: `AI transformation unavailable: ${aiError}. Using enhanced CSS filters.` 
+          }));
+        }
       } else {
+        // Use enhanced CSS filters
         transformedStream = applyEnhancedFilter(originalStream, filterType);
+        if (!filterState.apiStatus?.available) {
+          setFilterState(prev => ({ 
+            ...prev, 
+            error: 'AI APIs not configured. Using enhanced CSS filters. For real transformation, add API keys.' 
+          }));
+        }
       }
       
       streamRef.current = transformedStream;
@@ -178,7 +256,7 @@ export const useGenderFilter = () => {
         error: `Failed to apply ${filterType} filter: ${error}`,
       }));
     }
-  }, [applyEnhancedFilter, applyAIFilter]);
+  }, [applyAITransformation, applyEnhancedFilter, filterState.apiStatus]);
 
   const stopGenderFilter = useCallback(() => {
     console.log('🛑 Stopping gender filter...');
@@ -193,11 +271,12 @@ export const useGenderFilter = () => {
       streamRef.current = null;
     }
     
-    setFilterState({
+    setFilterState(prev => ({
+      ...prev,
       isProcessing: false,
       error: null,
       transformedStream: null,
-    });
+    }));
   }, []);
 
   // Cleanup on unmount

@@ -18,6 +18,7 @@ interface MediaState {
   genderFilter: 'none' | 'feminine' | 'masculine';
   transformedCameraStream: MediaStream | null;
   isFilterProcessing: boolean;
+  apiStatus: { available: boolean; provider: string; error?: string } | null;
 }
 
 export const useMediaAccess = () => {
@@ -37,6 +38,7 @@ export const useMediaAccess = () => {
     genderFilter: 'none',
     transformedCameraStream: null,
     isFilterProcessing: false,
+    apiStatus: null,
   });
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -90,6 +92,7 @@ export const useMediaAccess = () => {
       ...prev,
       transformedCameraStream: filterState.transformedStream,
       isFilterProcessing: filterState.isProcessing,
+      apiStatus: filterState.apiStatus,
     }));
   }, [filterState]);
 
@@ -436,8 +439,8 @@ export const useMediaAccess = () => {
   }, []);
 
   // New gender filter functions
-  const setGenderFilter = useCallback(async (filter: 'none' | 'feminine' | 'masculine') => {
-    console.log(`🎭 Setting gender filter to: ${filter}`);
+  const setGenderFilter = useCallback(async (filter: 'none' | 'feminine' | 'masculine', useAI: boolean = true) => {
+    console.log(`🎭 Setting gender filter to: ${filter} (AI: ${useAI})`);
     
     // Stop current filter if any
     if (mediaState.genderFilter !== 'none') {
@@ -448,7 +451,7 @@ export const useMediaAccess = () => {
     
     // Apply new filter if not 'none' and camera is on
     if (filter !== 'none' && mediaState.cameraStream) {
-      await startGenderFilter(mediaState.cameraStream, filter, false); // Use enhanced CSS for now
+      await startGenderFilter(mediaState.cameraStream, filter, useAI);
     }
   }, [mediaState.genderFilter, mediaState.cameraStream, stopGenderFilter, startGenderFilter]);
 
