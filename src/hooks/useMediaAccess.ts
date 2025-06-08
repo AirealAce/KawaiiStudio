@@ -215,9 +215,11 @@ export const useMediaAccess = () => {
       };
 
       const originalStream = await navigator.mediaDevices.getUserMedia(constraints);
-      originalMicStreamRef.current = originalStream.clone(); // Keep original for recording
       
-      // Set up audio visualization and volume control for preview
+      // Store the original stream for recording (CRITICAL: This is what gets recorded)
+      originalMicStreamRef.current = originalStream;
+      
+      // Create a separate stream for preview/monitoring with volume control
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const analyser = audioContext.createAnalyser();
       const source = audioContext.createMediaStreamSource(originalStream);
@@ -230,14 +232,14 @@ export const useMediaAccess = () => {
       
       analyser.fftSize = 256;
       
-      // Apply saved volume setting
+      // Apply saved volume setting for monitoring
       gainNode.gain.value = mediaState.microphoneVolume / 100;
       
       audioContextRef.current = audioContext;
       analyserRef.current = analyser;
       micGainNodeRef.current = gainNode;
       
-      // Use the volume-controlled stream for preview
+      // Use the volume-controlled stream for preview/monitoring only
       const previewStream = destination.stream;
       
       const updateAudioLevel = () => {
@@ -262,7 +264,7 @@ export const useMediaAccess = () => {
       setMediaState(prev => ({
         ...prev,
         isMicOn: true,
-        microphoneStream: previewStream,
+        microphoneStream: previewStream, // This is just for preview
       }));
       
       return previewStream;
@@ -340,38 +342,47 @@ export const useMediaAccess = () => {
       });
     }
     
-    // Add audio tracks from screen
+    // Add screen audio tracks
     if (mediaState.screenStream) {
       mediaState.screenStream.getAudioTracks().forEach(track => {
         combinedStream.addTrack(track);
       });
     }
     
-    // Add original microphone audio (not the processed one) for recording
+    // CRITICAL: Add the ORIGINAL microphone stream for recording (not the processed preview stream)
     if (originalMicStreamRef.current) {
       originalMicStreamRef.current.getAudioTracks().forEach(track => {
-        // Clone the track to avoid conflicts
-        const clonedTrack = track.clone();
-        combinedStream.addTrack(clonedTrack);
+        combinedStream.addTrack(track);
       });
     }
     
     if (combinedStream.getTracks().length > 0) {
       recordedChunksRef.current = [];
       
-      // Try MP4 format first, fallback to WebM if not supported
-      let mimeType = 'video/mp4';
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/webm;codecs=vp8,opus';
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = 'video/webm';
+      // Try different codec combinations for better compatibility
+      const codecOptions = [
+        'video/mp4;codecs=h264,aac',
+        'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+        'video/mp4',
+        'video/webm;codecs=vp9,opus',
+        'video/webm;codecs=vp8,opus',
+        'video/webm'
+      ];
+      
+      let mimeType = 'video/webm'; // fallback
+      for (const codec of codecOptions) {
+        if (MediaRecorder.isTypeSupported(codec)) {
+          mimeType = codec;
+          break;
         }
       }
       
+      console.log('Using codec:', mimeType);
+      
       const mediaRecorder = new MediaRecorder(combinedStream, {
         mimeType: mimeType,
-        videoBitsPerSecond: 5000000, // Higher bitrate for better quality
-        audioBitsPerSecond: 256000,  // Higher audio bitrate
+        videoBitsPerSecond: 8000000, // 8 Mbps for high quality
+        audioBitsPerSecond: 320000,  // 320 kbps for high quality audio
       });
       
       mediaRecorder.ondataavailable = (event) => {
@@ -384,13 +395,13 @@ export const useMediaAccess = () => {
         const blob = new Blob(recordedChunksRef.current, { type: mimeType });
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         
-        // Use appropriate file extension based on actual format
+        // Use appropriate file extension
         const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
         downloadFile(blob, `kawaii-recording-${timestamp}.${extension}`);
         recordedChunksRef.current = [];
       };
       
-      mediaRecorder.start(1000);
+      mediaRecorder.start(1000); // Record in 1-second chunks
       mediaRecorderRef.current = mediaRecorder;
       
       setMediaState(prev => ({
