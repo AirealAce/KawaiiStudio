@@ -46,6 +46,7 @@ export const useMediaAccess = () => {
   // NEW: Keep a recording-optimized microphone stream with proper gain
   const recordingMicStreamRef = useRef<MediaStream | null>(null);
   const recordingAudioContextRef = useRef<AudioContext | null>(null);
+  const recordingMicGainNodeRef = useRef<GainNode | null>(null);
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -117,8 +118,8 @@ export const useMediaAccess = () => {
     const gainNode = recordingContext.createGain();
     const destination = recordingContext.createMediaStreamDestination();
     
-    // Set a higher gain for recording (3x the UI volume setting)
-    const recordingGain = Math.max(1.5, (mediaState.microphoneVolume / 100) * 3);
+    // Set a MUCH higher gain for recording (5x the UI volume setting, minimum 2.0)
+    const recordingGain = Math.max(2.0, (mediaState.microphoneVolume / 100) * 5);
     gainNode.gain.value = recordingGain;
     
     console.log(`🔊 Setting recording microphone gain to: ${recordingGain} (UI volume: ${mediaState.microphoneVolume}%)`);
@@ -128,6 +129,7 @@ export const useMediaAccess = () => {
     
     recordingAudioContextRef.current = recordingContext;
     recordingMicStreamRef.current = destination.stream;
+    recordingMicGainNodeRef.current = gainNode;
     
     return destination.stream;
   }, [mediaState.microphoneVolume]);
@@ -378,10 +380,10 @@ export const useMediaAccess = () => {
     }
     
     // Update recording stream gain too
-    if (recordingAudioContextRef.current && recordingMicStreamRef.current) {
-      const recordingGain = Math.max(1.5, (volume / 100) * 3);
-      console.log(`🔊 Updating recording microphone gain to: ${recordingGain}`);
-      // We'd need to recreate the recording stream with new gain, but for now just log
+    if (recordingMicGainNodeRef.current) {
+      const recordingGain = Math.max(2.0, (volume / 100) * 5);
+      recordingMicGainNodeRef.current.gain.value = recordingGain;
+      console.log(`🔊 Updated recording microphone gain to: ${recordingGain}`);
     }
   }, []);
 
@@ -399,6 +401,54 @@ export const useMediaAccess = () => {
     setMediaState(prev => ({ ...prev, selectedMicrophone: deviceId }));
     localStorage.setItem('kawaii-selected-microphone', deviceId);
   }, []);
+
+  const createMixedAudioStream = useCallback(() => {
+    console.log('🎵 Creating mixed audio stream for recording...');
+    
+    // Create a new audio context for mixing
+    const mixingContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const destination = mixingContext.createMediaStreamDestination();
+    
+    let hasAudio = false;
+    
+    // Add microphone audio with high gain
+    if (recordingMicStreamRef.current) {
+      const micSource = mixingContext.createMediaStreamSource(recordingMicStreamRef.current);
+      const micGain = mixingContext.createGain();
+      micGain.gain.value = 3.0; // Very high gain for microphone
+      
+      micSource.connect(micGain);
+      micGain.connect(destination);
+      
+      console.log('🎤 Added microphone to mix with 3.0x gain');
+      hasAudio = true;
+    }
+    
+    // Add screen audio with moderate gain
+    if (mediaState.screenStream) {
+      const screenAudioTracks = mediaState.screenStream.getAudioTracks();
+      if (screenAudioTracks.length > 0) {
+        const screenSource = mixingContext.createMediaStreamSource(new MediaStream(screenAudioTracks));
+        const screenGain = mixingContext.createGain();
+        screenGain.gain.value = (mediaState.screenAudioVolume / 100) * 1.5; // Moderate gain for screen audio
+        
+        screenSource.connect(screenGain);
+        screenGain.connect(destination);
+        
+        console.log(`🔊 Added screen audio to mix with ${screenGain.gain.value}x gain`);
+        hasAudio = true;
+      }
+    }
+    
+    if (hasAudio) {
+      console.log('✅ Mixed audio stream created successfully');
+      return destination.stream;
+    } else {
+      console.log('⚠️ No audio sources available for mixing');
+      mixingContext.close();
+      return null;
+    }
+  }, [mediaState.screenStream, mediaState.screenAudioVolume]);
 
   const startRecording = useCallback(() => {
     console.log('🎬 Starting recording...');
@@ -421,24 +471,23 @@ export const useMediaAccess = () => {
         combinedStream.addTrack(track);
         trackCount++;
       });
-      
-      // Add screen audio tracks
-      mediaState.screenStream.getAudioTracks().forEach(track => {
-        console.log('🔊 Adding screen audio track:', track.label || 'Screen Audio', {
-          enabled: track.enabled,
-          readyState: track.readyState,
-          muted: track.muted
-        });
+    }
+    
+    // Add camera video if no screen sharing (fallback)
+    if (!mediaState.screenStream && mediaState.cameraStream) {
+      mediaState.cameraStream.getVideoTracks().forEach(track => {
+        console.log('📷 Adding camera video track:', track.label || 'Camera');
         combinedStream.addTrack(track);
         trackCount++;
       });
     }
     
-    // CRITICAL: Use the recording-optimized microphone stream with higher gain
-    if (recordingMicStreamRef.current) {
-      recordingMicStreamRef.current.getAudioTracks().forEach(track => {
-        console.log('🎤 Adding RECORDING microphone track:', {
-          label: track.label || 'Recording Microphone',
+    // CRITICAL: Create a properly mixed audio stream
+    const mixedAudioStream = createMixedAudioStream();
+    if (mixedAudioStream) {
+      mixedAudioStream.getAudioTracks().forEach(track => {
+        console.log('🎵 Adding mixed audio track:', {
+          label: track.label || 'Mixed Audio',
           enabled: track.enabled,
           readyState: track.readyState,
           muted: track.muted,
@@ -451,39 +500,8 @@ export const useMediaAccess = () => {
         combinedStream.addTrack(track);
         trackCount++;
       });
-    } else if (originalMicStreamRef.current) {
-      // Fallback to original stream if recording stream not available
-      console.log('⚠️ Using original microphone stream as fallback');
-      originalMicStreamRef.current.getAudioTracks().forEach(track => {
-        console.log('🎤 Adding ORIGINAL microphone track:', {
-          label: track.label || 'Original Microphone',
-          enabled: track.enabled,
-          readyState: track.readyState,
-          muted: track.muted,
-          settings: track.getSettings()
-        });
-        
-        track.enabled = true;
-        combinedStream.addTrack(track);
-        trackCount++;
-      });
     } else {
-      console.error('❌ NO MICROPHONE STREAM AVAILABLE FOR RECORDING!');
-      console.log('🔍 Debug info:', {
-        isMicOn: mediaState.isMicOn,
-        originalMicStreamExists: !!originalMicStreamRef.current,
-        recordingMicStreamExists: !!recordingMicStreamRef.current,
-        microphoneDevice: microphoneDeviceRef.current
-      });
-    }
-    
-    // Add camera video if no screen sharing (fallback)
-    if (!mediaState.screenStream && mediaState.cameraStream) {
-      mediaState.cameraStream.getVideoTracks().forEach(track => {
-        console.log('📷 Adding camera video track:', track.label || 'Camera');
-        combinedStream.addTrack(track);
-        trackCount++;
-      });
+      console.error('❌ Failed to create mixed audio stream!');
     }
     
     console.log(`🎵 Total tracks added: ${trackCount}`);
@@ -559,7 +577,7 @@ export const useMediaAccess = () => {
     } else {
       console.warn('⚠️ No streams available for recording');
     }
-  }, [mediaState.screenStream, mediaState.cameraStream, mediaState.isMicOn, downloadFile]);
+  }, [mediaState.screenStream, mediaState.cameraStream, mediaState.isMicOn, downloadFile, createMixedAudioStream]);
 
   const stopRecording = useCallback(() => {
     console.log('⏹️ Stopping recording...');
