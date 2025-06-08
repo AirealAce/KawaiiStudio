@@ -38,7 +38,10 @@ export const useMediaAccess = () => {
   const recordedChunksRef = useRef<Blob[]>([]);
   const micGainNodeRef = useRef<GainNode | null>(null);
   const screenGainNodeRef = useRef<GainNode | null>(null);
+  
+  // CRITICAL: Keep the original microphone stream separate and persistent
   const originalMicStreamRef = useRef<MediaStream | null>(null);
+  const microphoneDeviceRef = useRef<string>('default');
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -202,6 +205,8 @@ export const useMediaAccess = () => {
 
   const startMicrophone = useCallback(async () => {
     try {
+      console.log('🎤 Starting microphone...');
+      
       const constraints = {
         audio: {
           deviceId: mediaState.selectedMicrophone !== 'default' ? { exact: mediaState.selectedMicrophone } : undefined,
@@ -215,9 +220,11 @@ export const useMediaAccess = () => {
       };
 
       const originalStream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('🎤 Got original microphone stream:', originalStream.id);
       
-      // CRITICAL: Store the original, unprocessed stream for recording
-      originalMicStreamRef.current = originalStream.clone();
+      // CRITICAL: Store the original stream for recording - NEVER replace this
+      originalMicStreamRef.current = originalStream;
+      microphoneDeviceRef.current = mediaState.selectedMicrophone;
       
       // Create a separate stream for preview/monitoring with volume control
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -267,6 +274,7 @@ export const useMediaAccess = () => {
         microphoneStream: previewStream, // This is just for preview
       }));
       
+      console.log('✅ Microphone started successfully');
       return previewStream;
     } catch (error) {
       console.error('Error starting microphone:', error);
@@ -275,13 +283,21 @@ export const useMediaAccess = () => {
   }, [mediaState.selectedMicrophone, mediaState.microphoneVolume]);
 
   const stopMicrophone = useCallback(() => {
+    console.log('🎤 Stopping microphone...');
+    
     if (mediaState.microphoneStream) {
       mediaState.microphoneStream.getTracks().forEach(track => track.stop());
     }
-    if (originalMicStreamRef.current) {
+    
+    // CRITICAL: Don't stop the original stream if we're recording!
+    if (originalMicStreamRef.current && !mediaState.isRecording) {
+      console.log('🎤 Stopping original microphone stream');
       originalMicStreamRef.current.getTracks().forEach(track => track.stop());
       originalMicStreamRef.current = null;
+    } else if (mediaState.isRecording) {
+      console.log('🎤 Keeping original microphone stream for recording');
     }
+    
     if (audioContextRef.current) {
       audioContextRef.current.close();
     }
@@ -299,7 +315,7 @@ export const useMediaAccess = () => {
       microphoneStream: null,
       audioLevel: 0,
     }));
-  }, [mediaState.microphoneStream]);
+  }, [mediaState.microphoneStream, mediaState.isRecording]);
 
   const setMicrophoneVolume = useCallback((volume: number) => {
     setMediaState(prev => ({ ...prev, microphoneVolume: volume }));
@@ -327,59 +343,74 @@ export const useMediaAccess = () => {
 
   const startRecording = useCallback(() => {
     console.log('🎬 Starting recording...');
-    console.log('Screen sharing:', mediaState.isScreenSharing);
-    console.log('Microphone on:', mediaState.isMicOn);
-    console.log('Camera on:', mediaState.isCameraOn);
+    console.log('📊 Current state:', {
+      screenSharing: mediaState.isScreenSharing,
+      microphoneOn: mediaState.isMicOn,
+      cameraOn: mediaState.isCameraOn,
+      hasOriginalMicStream: !!originalMicStreamRef.current,
+      hasScreenStream: !!mediaState.screenStream,
+    });
     
     const combinedStream = new MediaStream();
+    let trackCount = 0;
     
     // Add video tracks from screen (primary video source)
     if (mediaState.screenStream) {
       mediaState.screenStream.getVideoTracks().forEach(track => {
-        console.log('📺 Adding screen video track:', track.label);
+        console.log('📺 Adding screen video track:', track.label || 'Screen Video');
         combinedStream.addTrack(track);
+        trackCount++;
       });
       
       // Add screen audio tracks
       mediaState.screenStream.getAudioTracks().forEach(track => {
-        console.log('🔊 Adding screen audio track:', track.label);
+        console.log('🔊 Adding screen audio track:', track.label || 'Screen Audio');
         combinedStream.addTrack(track);
+        trackCount++;
       });
     }
     
     // CRITICAL: Add the ORIGINAL microphone stream for recording
-    if (originalMicStreamRef.current && mediaState.isMicOn) {
+    if (originalMicStreamRef.current) {
       originalMicStreamRef.current.getAudioTracks().forEach(track => {
-        console.log('🎤 Adding microphone track to recording:', track.label, 'enabled:', track.enabled, 'readyState:', track.readyState);
+        console.log('🎤 Adding microphone track:', {
+          label: track.label || 'Microphone',
+          enabled: track.enabled,
+          readyState: track.readyState,
+          muted: track.muted
+        });
         
-        // Ensure the track is enabled and active
+        // Ensure the track is enabled and not muted
         track.enabled = true;
         
         combinedStream.addTrack(track);
+        trackCount++;
       });
     } else {
-      console.warn('⚠️ No microphone stream available for recording!');
-      if (!mediaState.isMicOn) {
-        console.warn('⚠️ Microphone is not turned on!');
-      }
-      if (!originalMicStreamRef.current) {
-        console.warn('⚠️ Original microphone stream reference is null!');
-      }
+      console.error('❌ NO MICROPHONE STREAM AVAILABLE FOR RECORDING!');
+      console.log('🔍 Debug info:', {
+        isMicOn: mediaState.isMicOn,
+        originalMicStreamExists: !!originalMicStreamRef.current,
+        microphoneDevice: microphoneDeviceRef.current
+      });
     }
     
     // Add camera video if no screen sharing (fallback)
     if (!mediaState.screenStream && mediaState.cameraStream) {
       mediaState.cameraStream.getVideoTracks().forEach(track => {
-        console.log('📷 Adding camera video track:', track.label);
+        console.log('📷 Adding camera video track:', track.label || 'Camera');
         combinedStream.addTrack(track);
+        trackCount++;
       });
     }
     
+    console.log(`🎵 Total tracks added: ${trackCount}`);
     console.log('🎵 Combined stream tracks:', combinedStream.getTracks().map(t => ({ 
       kind: t.kind, 
-      label: t.label, 
+      label: t.label || `${t.kind} track`,
       enabled: t.enabled, 
-      readyState: t.readyState 
+      readyState: t.readyState,
+      muted: t.muted
     })));
     
     if (combinedStream.getTracks().length > 0) {
@@ -461,7 +492,14 @@ export const useMediaAccess = () => {
       
       console.log('✅ Recording stopped successfully!');
     }
-  }, []);
+    
+    // Clean up the original microphone stream only if microphone is off
+    if (!mediaState.isMicOn && originalMicStreamRef.current) {
+      console.log('🧹 Cleaning up original microphone stream after recording');
+      originalMicStreamRef.current.getTracks().forEach(track => track.stop());
+      originalMicStreamRef.current = null;
+    }
+  }, [mediaState.isMicOn]);
 
   return {
     mediaState,
