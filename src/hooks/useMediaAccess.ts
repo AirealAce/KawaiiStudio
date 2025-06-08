@@ -109,7 +109,7 @@ export const useMediaAccess = () => {
     }
   }, [mediaState.screenStream, downloadFile]);
 
-  const createRecordingMicrophoneStream = useCallback(async (originalStream: MediaStream) => {
+  const createRecordingMicrophoneStream = useCallback(async (originalStream: MediaStream, volume: number) => {
     console.log('🎙️ Creating recording-optimized microphone stream...');
     
     // Create a new audio context specifically for recording
@@ -119,10 +119,10 @@ export const useMediaAccess = () => {
     const destination = recordingContext.createMediaStreamDestination();
     
     // Set a MUCH higher gain for recording (5x the UI volume setting, minimum 2.0)
-    const recordingGain = Math.max(2.0, (mediaState.microphoneVolume / 100) * 5);
+    const recordingGain = Math.max(2.0, (volume / 100) * 5);
     gainNode.gain.value = recordingGain;
     
-    console.log(`🔊 Setting recording microphone gain to: ${recordingGain} (UI volume: ${mediaState.microphoneVolume}%)`);
+    console.log(`🔊 Setting recording microphone gain to: ${recordingGain} (UI volume: ${volume}%)`);
     
     source.connect(gainNode);
     gainNode.connect(destination);
@@ -132,7 +132,7 @@ export const useMediaAccess = () => {
     recordingMicGainNodeRef.current = gainNode;
     
     return destination.stream;
-  }, [mediaState.microphoneVolume]);
+  }, []);
 
   const startScreenCapture = useCallback(async () => {
     try {
@@ -262,8 +262,8 @@ export const useMediaAccess = () => {
         microphoneDeviceRef.current = mediaState.selectedMicrophone;
         console.log('🎤 Stored new original microphone stream for recording');
         
-        // Create recording-optimized stream
-        await createRecordingMicrophoneStream(originalStream);
+        // Create recording-optimized stream with current volume
+        await createRecordingMicrophoneStream(originalStream, mediaState.microphoneVolume);
       }
       
       // Create a separate stream for preview/monitoring with volume control
@@ -372,14 +372,18 @@ export const useMediaAccess = () => {
   }, [mediaState.microphoneStream, mediaState.isRecording]);
 
   const setMicrophoneVolume = useCallback((volume: number) => {
+    console.log(`🎚️ Setting microphone volume to: ${volume}%`);
+    
     setMediaState(prev => ({ ...prev, microphoneVolume: volume }));
     localStorage.setItem('kawaii-mic-volume', volume.toString());
     
+    // Update preview/monitoring gain
     if (micGainNodeRef.current) {
       micGainNodeRef.current.gain.value = volume / 100;
+      console.log(`🔊 Updated preview microphone gain to: ${volume / 100}`);
     }
     
-    // Update recording stream gain too
+    // CRITICAL: Update recording stream gain in real-time
     if (recordingMicGainNodeRef.current) {
       const recordingGain = Math.max(2.0, (volume / 100) * 5);
       recordingMicGainNodeRef.current.gain.value = recordingGain;
