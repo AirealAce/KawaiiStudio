@@ -6,7 +6,7 @@ import { StatusBar } from './components/StatusBar';
 import { KawaiiButton } from './components/KawaiiButton';
 import { useMediaAccess } from './hooks/useMediaAccess';
 import { useSound } from './hooks/useSound';
-import { Sparkles, Heart, Star } from 'lucide-react';
+import { Sparkles, Heart, Star, AlertCircle, X } from 'lucide-react';
 
 function App() {
   const {
@@ -30,6 +30,7 @@ function App() {
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [viewerCount] = useState(Math.floor(Math.random() * 1000) + 50);
   const [showFiltersModal, setShowFiltersModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (mediaState.isRecording && !startTime) {
@@ -58,6 +59,11 @@ function App() {
     return () => clearInterval(interval);
   }, [startTime]);
 
+  const showError = (message: string) => {
+    setErrorMessage(message);
+    setTimeout(() => setErrorMessage(null), 5000);
+  };
+
   const handleScreenShare = async () => {
     try {
       if (mediaState.isScreenSharing) {
@@ -66,9 +72,20 @@ function App() {
         await startScreenCapture();
         playSuccess();
       }
-    } catch (error) {
+    } catch (error: any) {
       playError();
       console.error('Screen share error:', error);
+      
+      // Provide user-friendly error messages
+      if (error.name === 'NotAllowedError' || error.message?.includes('Permission denied')) {
+        showError('🚫 Screen sharing permission was denied. Please click "Allow" when prompted to share your screen! 💖');
+      } else if (error.name === 'NotSupportedError') {
+        showError('😅 Screen sharing is not supported in this browser. Try using Chrome, Firefox, or Edge! ✨');
+      } else if (error.name === 'AbortError') {
+        showError('🌸 Screen sharing was cancelled. No worries, try again when you\'re ready! 🎀');
+      } else {
+        showError('💔 Oops! Something went wrong with screen sharing. Please try again! 🌟');
+      }
     }
   };
 
@@ -80,9 +97,17 @@ function App() {
         await startCamera();
         playSuccess();
       }
-    } catch (error) {
+    } catch (error: any) {
       playError();
       console.error('Camera error:', error);
+      
+      if (error.name === 'NotAllowedError') {
+        showError('📷 Camera permission was denied. Please allow camera access to use this feature! 💖');
+      } else if (error.name === 'NotFoundError') {
+        showError('😅 No camera found! Make sure your camera is connected and try again! ✨');
+      } else {
+        showError('💔 Camera error occurred. Please check your camera and try again! 🌟');
+      }
     }
   };
 
@@ -94,9 +119,17 @@ function App() {
         await startMicrophone();
         playSuccess();
       }
-    } catch (error) {
+    } catch (error: any) {
       playError();
       console.error('Microphone error:', error);
+      
+      if (error.name === 'NotAllowedError') {
+        showError('🎤 Microphone permission was denied. Please allow microphone access! 💖');
+      } else if (error.name === 'NotFoundError') {
+        showError('😅 No microphone found! Make sure your microphone is connected! ✨');
+      } else {
+        showError('💔 Microphone error occurred. Please check your microphone and try again! 🌟');
+      }
     }
   };
 
@@ -122,6 +155,26 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-kawaii-pink-200 via-kawaii-purple-200 to-kawaii-blue-200 font-kawaii p-4">
+      {/* Error Toast */}
+      {errorMessage && (
+        <div className="fixed top-4 right-4 z-50 bg-white/95 backdrop-blur-kawaii rounded-2xl p-4 border-2 border-kawaii-pink-400 shadow-2xl max-w-md animate-bounce-cute">
+          <div className="flex items-start gap-3">
+            <AlertCircle size={24} className="text-kawaii-pink-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-kawaii-purple-800 font-semibold text-sm leading-relaxed">
+                {errorMessage}
+              </p>
+            </div>
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="text-kawaii-purple-400 hover:text-kawaii-purple-600 transition-colors"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Floating decorations */}
       <div className="fixed top-10 left-10 text-4xl animate-float">🌸</div>
       <div className="fixed top-20 right-20 text-3xl animate-bounce-cute">🎀</div>
