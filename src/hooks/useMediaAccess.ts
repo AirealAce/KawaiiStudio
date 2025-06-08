@@ -338,13 +338,14 @@ export const useMediaAccess = () => {
       });
     }
     
-    // Add audio tracks directly without mixing to avoid corruption
+    // Add audio tracks from screen
     if (mediaState.screenStream) {
       mediaState.screenStream.getAudioTracks().forEach(track => {
         combinedStream.addTrack(track);
       });
     }
     
+    // Add audio tracks from microphone
     if (mediaState.microphoneStream) {
       mediaState.microphoneStream.getAudioTracks().forEach(track => {
         combinedStream.addTrack(track);
@@ -354,16 +355,19 @@ export const useMediaAccess = () => {
     if (combinedStream.getTracks().length > 0) {
       recordedChunksRef.current = [];
       
-      // Use the most compatible codec
-      let mimeType = 'video/webm;codecs=vp8';
+      // Try MP4 format first, fallback to WebM if not supported
+      let mimeType = 'video/mp4';
       if (!MediaRecorder.isTypeSupported(mimeType)) {
-        mimeType = 'video/webm';
+        mimeType = 'video/webm;codecs=vp8,opus';
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = 'video/webm';
+        }
       }
       
       const mediaRecorder = new MediaRecorder(combinedStream, {
         mimeType: mimeType,
-        videoBitsPerSecond: 2500000,
-        audioBitsPerSecond: 128000,
+        videoBitsPerSecond: 5000000, // Higher bitrate for better quality
+        audioBitsPerSecond: 256000,  // Higher audio bitrate
       });
       
       mediaRecorder.ondataavailable = (event) => {
@@ -376,8 +380,9 @@ export const useMediaAccess = () => {
         const blob = new Blob(recordedChunksRef.current, { type: mimeType });
         const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
         
-        // Save as .webm to match the actual format
-        downloadFile(blob, `kawaii-recording-${timestamp}.webm`);
+        // Use appropriate file extension based on actual format
+        const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
+        downloadFile(blob, `kawaii-recording-${timestamp}.${extension}`);
         recordedChunksRef.current = [];
       };
       
