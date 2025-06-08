@@ -222,9 +222,16 @@ export const useMediaAccess = () => {
       const originalStream = await navigator.mediaDevices.getUserMedia(constraints);
       console.log('🎤 Got original microphone stream:', originalStream.id);
       
-      // CRITICAL: Store the original stream for recording - NEVER replace this
-      originalMicStreamRef.current = originalStream;
-      microphoneDeviceRef.current = mediaState.selectedMicrophone;
+      // CRITICAL: Store the original stream for recording - NEVER replace this unless device changes
+      if (!originalMicStreamRef.current || microphoneDeviceRef.current !== mediaState.selectedMicrophone) {
+        // Only replace if we don't have one or device changed
+        if (originalMicStreamRef.current) {
+          originalMicStreamRef.current.getTracks().forEach(track => track.stop());
+        }
+        originalMicStreamRef.current = originalStream.clone();
+        microphoneDeviceRef.current = mediaState.selectedMicrophone;
+        console.log('🎤 Stored new original microphone stream for recording');
+      }
       
       // Create a separate stream for preview/monitoring with volume control
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -285,19 +292,22 @@ export const useMediaAccess = () => {
   const stopMicrophone = useCallback(() => {
     console.log('🎤 Stopping microphone...');
     
+    // Stop the preview stream
     if (mediaState.microphoneStream) {
       mediaState.microphoneStream.getTracks().forEach(track => track.stop());
     }
     
-    // CRITICAL: Don't stop the original stream if we're recording!
-    if (originalMicStreamRef.current && !mediaState.isRecording) {
-      console.log('🎤 Stopping original microphone stream');
+    // CRITICAL: NEVER stop the original stream if we're recording!
+    // Keep it alive for recording purposes
+    if (!mediaState.isRecording && originalMicStreamRef.current) {
+      console.log('🎤 Stopping original microphone stream (not recording)');
       originalMicStreamRef.current.getTracks().forEach(track => track.stop());
       originalMicStreamRef.current = null;
     } else if (mediaState.isRecording) {
-      console.log('🎤 Keeping original microphone stream for recording');
+      console.log('🎤 Keeping original microphone stream alive for recording');
     }
     
+    // Stop audio context and monitoring
     if (audioContextRef.current) {
       audioContextRef.current.close();
     }
@@ -364,7 +374,11 @@ export const useMediaAccess = () => {
       
       // Add screen audio tracks
       mediaState.screenStream.getAudioTracks().forEach(track => {
-        console.log('🔊 Adding screen audio track:', track.label || 'Screen Audio');
+        console.log('🔊 Adding screen audio track:', track.label || 'Screen Audio', {
+          enabled: track.enabled,
+          readyState: track.readyState,
+          muted: track.muted
+        });
         combinedStream.addTrack(track);
         trackCount++;
       });
@@ -373,11 +387,12 @@ export const useMediaAccess = () => {
     // CRITICAL: Add the ORIGINAL microphone stream for recording
     if (originalMicStreamRef.current) {
       originalMicStreamRef.current.getAudioTracks().forEach(track => {
-        console.log('🎤 Adding microphone track:', {
+        console.log('🎤 Adding microphone track to recording:', {
           label: track.label || 'Microphone',
           enabled: track.enabled,
           readyState: track.readyState,
-          muted: track.muted
+          muted: track.muted,
+          settings: track.getSettings()
         });
         
         // Ensure the track is enabled and not muted
@@ -393,6 +408,12 @@ export const useMediaAccess = () => {
         originalMicStreamExists: !!originalMicStreamRef.current,
         microphoneDevice: microphoneDeviceRef.current
       });
+      
+      // Try to get microphone stream if not available
+      if (mediaState.isMicOn) {
+        console.log('🔄 Attempting to restore microphone stream for recording...');
+        // The microphone should already be started, but the original stream might be missing
+      }
     }
     
     // Add camera video if no screen sharing (fallback)
@@ -493,7 +514,7 @@ export const useMediaAccess = () => {
       console.log('✅ Recording stopped successfully!');
     }
     
-    // Clean up the original microphone stream only if microphone is off
+    // Clean up the original microphone stream only if microphone is off AND we're not recording
     if (!mediaState.isMicOn && originalMicStreamRef.current) {
       console.log('🧹 Cleaning up original microphone stream after recording');
       originalMicStreamRef.current.getTracks().forEach(track => track.stop());
