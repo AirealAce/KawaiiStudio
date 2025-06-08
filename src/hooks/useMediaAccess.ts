@@ -38,6 +38,7 @@ export const useMediaAccess = () => {
   const recordedChunksRef = useRef<Blob[]>([]);
   const micGainNodeRef = useRef<GainNode | null>(null);
   const screenGainNodeRef = useRef<GainNode | null>(null);
+  const originalMicStreamRef = useRef<MediaStream | null>(null);
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -213,12 +214,13 @@ export const useMediaAccess = () => {
         video: false,
       };
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const originalStream = await navigator.mediaDevices.getUserMedia(constraints);
+      originalMicStreamRef.current = originalStream.clone(); // Keep original for recording
       
-      // Set up audio visualization and volume control
+      // Set up audio visualization and volume control for preview
       const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
       const analyser = audioContext.createAnalyser();
-      const source = audioContext.createMediaStreamSource(stream);
+      const source = audioContext.createMediaStreamSource(originalStream);
       const gainNode = audioContext.createGain();
       const destination = audioContext.createMediaStreamDestination();
       
@@ -235,12 +237,8 @@ export const useMediaAccess = () => {
       analyserRef.current = analyser;
       micGainNodeRef.current = gainNode;
       
-      // Replace original stream with volume-controlled stream
-      const originalTrack = stream.getAudioTracks()[0];
-      stream.removeTrack(originalTrack);
-      destination.stream.getAudioTracks().forEach(track => {
-        stream.addTrack(track);
-      });
+      // Use the volume-controlled stream for preview
+      const previewStream = destination.stream;
       
       const updateAudioLevel = () => {
         if (analyserRef.current) {
@@ -264,10 +262,10 @@ export const useMediaAccess = () => {
       setMediaState(prev => ({
         ...prev,
         isMicOn: true,
-        microphoneStream: stream,
+        microphoneStream: previewStream,
       }));
       
-      return stream;
+      return previewStream;
     } catch (error) {
       console.error('Error starting microphone:', error);
       throw error;
@@ -277,6 +275,10 @@ export const useMediaAccess = () => {
   const stopMicrophone = useCallback(() => {
     if (mediaState.microphoneStream) {
       mediaState.microphoneStream.getTracks().forEach(track => track.stop());
+    }
+    if (originalMicStreamRef.current) {
+      originalMicStreamRef.current.getTracks().forEach(track => track.stop());
+      originalMicStreamRef.current = null;
     }
     if (audioContextRef.current) {
       audioContextRef.current.close();
@@ -345,10 +347,12 @@ export const useMediaAccess = () => {
       });
     }
     
-    // Add audio tracks from microphone
-    if (mediaState.microphoneStream) {
-      mediaState.microphoneStream.getAudioTracks().forEach(track => {
-        combinedStream.addTrack(track);
+    // Add original microphone audio (not the processed one) for recording
+    if (originalMicStreamRef.current) {
+      originalMicStreamRef.current.getAudioTracks().forEach(track => {
+        // Clone the track to avoid conflicts
+        const clonedTrack = track.clone();
+        combinedStream.addTrack(clonedTrack);
       });
     }
     
@@ -396,7 +400,7 @@ export const useMediaAccess = () => {
     } else {
       console.warn('No streams available for recording');
     }
-  }, [mediaState.screenStream, mediaState.cameraStream, mediaState.microphoneStream, downloadFile]);
+  }, [mediaState.screenStream, mediaState.cameraStream, downloadFile]);
 
   const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
