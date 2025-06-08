@@ -103,11 +103,18 @@ export const useMediaAccess = () => {
   const startScreenCapture = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { mediaSource: 'screen' },
+        video: { 
+          mediaSource: 'screen',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30 }
+        },
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
+          sampleRate: 48000,
+          channelCount: 2
         },
       });
       
@@ -200,6 +207,8 @@ export const useMediaAccess = () => {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
+          sampleRate: 48000,
+          channelCount: 1
         },
         video: false,
       };
