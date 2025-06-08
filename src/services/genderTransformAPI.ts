@@ -25,7 +25,7 @@ class GenderTransformAPI {
 
   constructor() {
     // These would be set via environment variables in production
-    this.apiKey = process.env.VITE_GENDER_TRANSFORM_API_KEY || '';
+    this.apiKey = import.meta.env.VITE_GENDER_TRANSFORM_API_KEY || '';
     this.baseUrl = 'https://api.akool.com/api/v1'; // Example API
   }
 
@@ -131,7 +131,7 @@ class GenderTransformAPI {
         script.onload = () => {
           // Initialize DeepAR with gender swap effects
           const deepAR = new (window as any).DeepAR({
-            licenseKey: process.env.VITE_DEEPAR_LICENSE_KEY,
+            licenseKey: import.meta.env.VITE_DEEPAR_LICENSE_KEY,
             canvas: document.createElement('canvas'),
             additionalOptions: {
               hint: 'faceTracking',
