@@ -8,6 +8,7 @@ interface VideoPreviewProps {
   emoji: string;
   isActive: boolean;
   className?: string;
+  genderFilter?: 'none' | 'feminine' | 'masculine';
 }
 
 export const VideoPreview: React.FC<VideoPreviewProps> = ({
@@ -16,6 +17,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
   emoji,
   isActive,
   className = '',
+  genderFilter = 'none',
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -35,6 +37,38 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
     }
   };
 
+  const getFilterClasses = () => {
+    if (title !== 'Camera' || genderFilter === 'none') return '';
+    
+    switch (genderFilter) {
+      case 'feminine':
+        return 'filter-feminine';
+      case 'masculine':
+        return 'filter-masculine';
+      default:
+        return '';
+    }
+  };
+
+  const getFilterStyles = () => {
+    if (title !== 'Camera' || genderFilter === 'none') return {};
+    
+    switch (genderFilter) {
+      case 'feminine':
+        return {
+          filter: 'contrast(1.1) brightness(1.05) saturate(1.15) hue-rotate(5deg)',
+          transform: 'scaleX(-1) scaleY(0.98)',
+        };
+      case 'masculine':
+        return {
+          filter: 'contrast(1.15) brightness(0.95) saturate(0.9) hue-rotate(-5deg)',
+          transform: 'scaleX(-1) scaleY(1.02)',
+        };
+      default:
+        return {};
+    }
+  };
+
   return (
     <div 
       ref={containerRef}
@@ -46,6 +80,11 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
         <span className="font-kawaii font-semibold text-kawaii-purple-800 flex items-center gap-2">
           <span className="text-lg">{emoji}</span>
           {title}
+          {genderFilter !== 'none' && title === 'Camera' && (
+            <span className="text-sm">
+              {genderFilter === 'feminine' ? '👩' : '👨'}
+            </span>
+          )}
         </span>
       </div>
       
@@ -59,7 +98,8 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
           autoPlay
           muted
           playsInline
-          className="w-full h-full object-cover"
+          className={`w-full h-full object-cover transition-all duration-500 ${getFilterClasses()}`}
+          style={getFilterStyles()}
         />
       ) : (
         <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-kawaii-pink-50 to-kawaii-purple-50">

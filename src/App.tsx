@@ -31,6 +31,7 @@ function App() {
   const [viewerCount] = useState(Math.floor(Math.random() * 1000) + 50);
   const [showFiltersModal, setShowFiltersModal] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [genderFilter, setGenderFilter] = useState<'none' | 'feminine' | 'masculine'>('none');
 
   useEffect(() => {
     if (mediaState.isRecording && !startTime) {
@@ -93,6 +94,7 @@ function App() {
     try {
       if (mediaState.isCameraOn) {
         stopCamera();
+        setGenderFilter('none'); // Reset filter when camera is turned off
       } else {
         await startCamera();
         playSuccess();
@@ -237,6 +239,8 @@ function App() {
             setMicrophoneVolume={setMicrophoneVolume}
             setScreenAudioVolume={setScreenAudioVolume}
             setSelectedMicrophone={setSelectedMicrophone}
+            genderFilter={genderFilter}
+            setGenderFilter={setGenderFilter}
           />
         </div>
       </div>
@@ -250,6 +254,7 @@ function App() {
           emoji="📷"
           isActive={mediaState.isCameraOn}
           className="h-64"
+          genderFilter={genderFilter}
         />
 
         {/* Audio Visualizer */}
